@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dot Matrix Bullet Evasion</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="title">
+      <div>
+        <h1>Dot Matrix Bullet Evasion</h1>
+        <p>WASD to move · Shift to rush · Space to dash · Survive the storm of dots.</p>
+      </div>
+      <div class="account-panel">
+        <div class="account-form">
+          <label>Nickname
+            <input id="nickname" type="text" placeholder="enter nickname" />
+          </label>
+          <label>Password
+            <input id="password" type="password" placeholder="enter password" />
+          </label>
+          <div class="account-buttons">
+            <button id="loginBtn">Sign In</button>
+            <button id="logoutBtn" class="ghost">Sign Out</button>
+          </div>
+          <small class="info">Accounts live only in this browser and keep track of choices, level, and win rate.</small>
+        </div>
+        <div class="account-stats" id="accountStats"></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="menu">
+        <button class="mode" id="soloBtn">Solo Roguelike</button>
+        <button class="mode" id="pvpBtn">1v1 Duel</button>
+        <button class="mode ghost" id="codexBtn">Codex</button>
+      </section>
+      <section class="game-wrapper">
+        <canvas id="gameCanvas" width="900" height="600"></canvas>
+        <div class="hud" id="hud"></div>
+        <div class="queue-overlay hidden" id="queueOverlay">
+          <p>Waiting for another challenger...</p>
+          <div class="dot-loader"></div>
+        </div>
+        <div class="choice-overlay hidden" id="choiceOverlay">
+          <div class="choice-header">
+            <h2 id="choiceTitle">Select an affliction for your run</h2>
+            <p id="choiceSubtitle">Time pauses while you choose. A random curse will hit when the timer expires.</p>
+            <div class="choice-timer" id="choiceTimer"></div>
+          </div>
+          <div class="choice-options" id="choiceOptions"></div>
+        </div>
+        <div class="gameover-overlay hidden" id="gameOver">
+          <h2 id="gameOverTitle">Round Over</h2>
+          <p id="gameOverDetail"></p>
+          <div class="gameover-buttons">
+            <button id="rematchBtn">Rematch</button>
+            <button id="mainMenuBtn" class="ghost">Main Menu</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <template id="codexTemplate">
+    <div class="codex">
+      <h2>Unlocked Choices</h2>
+      <div class="codex-grid" id="codexGrid"></div>
+      <button class="ghost" id="closeCodex">Close</button>
+    </div>
+  </template>
+  <script src="main.js" type="module"></script>
+</body>
+</html>
