@@ -41,7 +41,17 @@ body {
 
 .title h1 {
   margin: 0;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.18em;
+  font-size: clamp(2.6rem, 6vw, 3.8rem);
+  text-transform: uppercase;
+}
+
+.title .tagline {
+  margin: 0.25rem 0 0;
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .account-panel {
@@ -142,8 +152,9 @@ canvas {
   gap: 0.6rem;
   background: rgba(4, 6, 12, 0.82);
   border-radius: 16px;
-  padding: 0.8rem 1rem;
+  padding: 1rem 1.2rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
 }
 
 .meter {
@@ -152,6 +163,9 @@ canvas {
   gap: 0.4rem;
   align-items: center;
   font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .meter-label {
@@ -160,22 +174,26 @@ canvas {
 }
 
 .meter-track {
-  width: 180px;
-  height: 10px;
+  width: 210px;
+  height: 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
   position: relative;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.4);
 }
 
 .meter-track span {
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg, var(--dot), var(--good));
+  border-radius: inherit;
+  box-shadow: 0 0 12px rgba(127, 247, 255, 0.45);
 }
 
 .meter.hp .meter-track span {
   background: linear-gradient(90deg, #ff7b7b, #ffed7f);
+  box-shadow: 0 0 14px rgba(255, 123, 123, 0.5);
 }
 
 .choice-chips {
@@ -190,6 +208,14 @@ canvas {
   border: 1px solid rgba(255, 255, 255, 0.2);
   font-size: 0.75rem;
   background: rgba(255, 255, 255, 0.05);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.choice-chip strong {
+  font-size: 0.7rem;
+  color: var(--accent-soft);
 }
 
 .choice-chip.empty {

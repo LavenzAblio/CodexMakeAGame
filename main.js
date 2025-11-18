@@ -26,9 +26,14 @@ const unlockListEl = document.getElementById('unlockList');
 
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
-const BASE_SPAWN = 1.35;
+const BASE_SPAWN = 1.75;
+const BASE_SPAWN_ACCEL = 0.006;
 const CHOICE_INTERVAL = 18;
 const CHOICE_DURATION = 9;
+const HEAL_INTERVAL = 60;
+const HEAL_AMOUNT = 12;
+const ARMOR_DURATION = 1;
+const AI_FALLBACK_MS = 30000;
 
 const state = {
   mode: 'menu',
@@ -60,198 +65,311 @@ const CHOICES = [
     id: 'idolTragedy',
     name: 'Idol Tragedy',
     description:
-      'Step tempo accelerates (+10% speed) but bullet streams accelerate far more (+30% spawn & speed).',
-    apply: (run) => {
-      run.player.speedMultiplier *= 1.1;
-      run.bulletSpeed *= 1.3;
-      run.spawnRate *= 1.3;
-      run.danger += 0.3;
+      'You move quicker, but every encore dials bullets faster and denser. Stacks raise both extremes.',
+    apply: (run, stack) => {
+      run.player.speedMultiplier *= 1.08;
+      const surge = 1.25 + (stack - 1) * 0.12;
+      run.bulletSpeed *= surge;
+      run.spawnRate *= surge;
+      run.danger += 0.3 + stack * 0.05;
     },
   },
   {
     id: 'laserChaos',
     name: 'Laser Chaos',
-    description: 'Sweeping laser columns telegraph briefly before burning through the arena.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'laser')) {
-        run.extraSpawners.push(createLaserSpawner());
-      }
-      run.danger += 0.4;
+    description: 'Rapid beam walls telegraph briefly then sear straight lines. More stacks mean more beams.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'laser', createLaserSpawner);
+      spawner.level = stack;
+      run.danger += 0.35 + stack * 0.05;
     },
   },
   {
     id: 'staminaLeak',
     name: 'Stamina Leak',
-    description: 'Stamina regen is halved and rush drains harder, but max stamina grows slightly.',
-    apply: (run) => {
-      run.player.staminaMax += 10;
+    description: 'Rush drain and regen penalties stack, though max stamina creeps upward.',
+    apply: (run, stack) => {
+      run.player.staminaMax += 8;
       run.player.stamina = Math.min(run.player.stamina, run.player.staminaMax);
-      run.player.staminaRegen *= 0.5;
-      run.player.rushDrain *= 1.35;
-      run.danger += 0.2;
+      run.player.staminaRegen *= 0.55;
+      run.player.rushDrain *= 1.2;
+      if (stack > 1) {
+        run.player.staminaRegen *= 0.8;
+        run.player.rushDrain *= 1.1;
+      }
+      run.danger += 0.22 + stack * 0.03;
     },
   },
   {
     id: 'tilePhantom',
     name: 'Phantom Tiles',
-    description: 'Blinking squares appear anywhere and zap for heavy damage when solid.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'tile')) {
-        run.extraSpawners.push(createTileSpawner());
-      }
-      run.danger += 0.35;
+    description: 'Blinking squares slam down anywhere. Extra stacks widen and quicken the pattern.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'tile', createTileSpawner);
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.04;
     },
   },
   {
     id: 'mirrorBloom',
     name: 'Mirror Bloom',
-    description: 'Every fourth bullet duplicates itself. Dash cooldown also grows.',
-    apply: (run) => {
+    description: 'Random bullets duplicate into mirrored twins. Each stack lowers the interval.',
+    apply: (run, stack) => {
       run.mirrorBloom = true;
-      run.player.dashCooldownBase *= 1.3;
-      run.danger += 0.3;
+      run.mirrorBloomLevel = stack;
+      run.player.dashCooldownBase *= 1.12;
+      run.danger += 0.26 + stack * 0.05;
     },
   },
   {
     id: 'gravityFlood',
     name: 'Gravity Flood',
-    description: 'Bullets enlarge and bend toward you. Dash distance shrinks.',
-    apply: (run) => {
-      run.gravityPull = true;
-      run.player.dashDistance *= 0.75;
-      run.danger += 0.35;
+    description: 'All projectiles swell and arc toward you. Stacks intensify the pull.',
+    apply: (run, stack) => {
+      run.gravityPull = stack;
+      run.player.dashDistance = Math.max(70, run.player.dashDistance * 0.85);
+      run.danger += 0.33 + stack * 0.06;
     },
   },
   {
     id: 'shardStorm',
     name: 'Shard Storm',
-    description: 'Needle shards periodically burst from random points.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'shard')) {
-        run.extraSpawners.push(createShardSpawner());
-      }
-      run.danger += 0.3;
+    description: 'Telegraphed bursts seed plus-mark warnings before firing radial shards.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'shard', createShardSpawner);
+      spawner.level = stack;
+      run.danger += 0.28 + stack * 0.05;
     },
   },
   {
     id: 'voidHiss',
     name: 'Void Hiss',
-    description: 'Choice timer shortens for the rest of the run and HP max drops.',
-    apply: (run) => {
-      run.choiceInterval *= 0.85;
-      run.player.hpMax = Math.max(10, run.player.hpMax - 10);
+    description: 'Choice timers shrink and your maximum HP drops with each whisper.',
+    apply: (run, stack) => {
+      run.choiceInterval = Math.max(8, run.choiceInterval * 0.9);
+      run.player.hpMax = Math.max(20, run.player.hpMax - 8);
       run.player.hp = Math.min(run.player.hp, run.player.hpMax);
-      run.danger += 0.25;
+      run.danger += 0.24 + stack * 0.04;
     },
   },
   {
     id: 'haloDrift',
     name: 'Halo Drift',
-    description: 'Twin emitters orbit center and flick radial beads constantly.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'halo')) {
-        run.extraSpawners.push(createHaloSpawner());
-      }
-      run.danger += 0.35;
+    description: 'Orbiting emitters lob beads around you. Extra stacks add emitters.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'halo', createHaloSpawner);
+      spawner.level = stack;
+      run.danger += 0.32 + stack * 0.05;
     },
   },
   {
     id: 'meteorRain',
     name: 'Meteor Rain',
-    description: 'Heavy squares plummet from the sky with low warnings.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'meteor')) {
-        run.extraSpawners.push(createMeteorSpawner());
-      }
-      run.danger += 0.35;
+    description: 'Heavy blocks fall with short warnings. Stacks drop more at once.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'meteor', createMeteorSpawner);
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
     },
   },
   {
     id: 'fanQuills',
     name: 'Fan Quills',
-    description: 'Edge cannons sweep in fans that spread across the arena.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'fan')) {
-        run.extraSpawners.push(createFanSpawner());
-      }
-      run.danger += 0.3;
+    description: 'Edge cannons sweep in fan volleys that thicken with stacks.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'fan', createFanSpawner);
+      spawner.level = stack;
+      run.danger += 0.28 + stack * 0.05;
     },
   },
   {
     id: 'blinkNeedles',
     name: 'Blink Needles',
-    description: 'Teleporting needles mark the floor near you then lunge outward.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'blink')) {
-        run.extraSpawners.push(createBlinkSpawner());
-      }
-      run.danger += 0.28;
+    description: 'Teleporting needles mark the floor, then streak outward in greater numbers per stack.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'blink', createBlinkSpawner);
+      spawner.level = stack;
+      run.danger += 0.26 + stack * 0.05;
     },
   },
   {
     id: 'novaGarden',
     name: 'Nova Garden',
-    description: 'Pods sprout, pulse, and detonate into wide rings of shards.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'nova')) {
-        run.extraSpawners.push(createNovaSpawner());
-      }
-      run.danger += 0.35;
+    description: 'Pods sprout, pulse, and detonate into wide rings. More stacks mean denser pods.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'nova', createNovaSpawner);
+      spawner.level = stack;
+      run.danger += 0.32 + stack * 0.05;
     },
   },
   {
     id: 'seekerFlare',
     name: 'Seeker Flares',
-    description: 'Slow orbs ignite and begin steering toward your current spot.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'seeker')) {
-        run.extraSpawners.push(createSeekerSpawner());
-      }
-      run.danger += 0.33;
+    description: 'Slow orbs ignite, then steer toward your last position. Stacks quicken ignition.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'seeker', createSeekerSpawner);
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.04;
     },
   },
   {
     id: 'ringCascade',
     name: 'Ring Cascade',
-    description: 'Every few seconds three successive rings ripple outward.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'cascade')) {
-        run.extraSpawners.push(createCascadeSpawner());
-      }
-      run.danger += 0.4;
+    description: 'Sequential rings ripple outward. Each stack adds an extra wave.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'cascade', createCascadeSpawner);
+      spawner.level = stack;
+      run.danger += 0.34 + stack * 0.05;
     },
   },
   {
     id: 'riftStrafe',
     name: 'Rift Strafe',
-    description: 'Columns of bullets sweep horizontally or vertically at once.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'tunnel')) {
-        run.extraSpawners.push(createTunnelSpawner());
-      }
-      run.danger += 0.32;
+    description: 'Columns sweep across the arena. Stacks reduce downtime.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'tunnel', createTunnelSpawner);
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
     },
   },
   {
     id: 'emberFlurry',
     name: 'Ember Flurry',
-    description: 'Showers of micro embers rain constantly from above.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'rain')) {
-        run.extraSpawners.push(createRainSpawner());
-      }
-      run.danger += 0.27;
+    description: 'Micro embers rain from above. Stacks make them faster and hotter.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'rain', createRainSpawner);
+      spawner.level = stack;
+      run.danger += 0.25 + stack * 0.05;
     },
   },
   {
     id: 'spiralSnare',
     name: 'Spiral Snare',
-    description: 'Spiral launchers continuously spin and fire paired bolts.',
-    apply: (run) => {
-      if (!run.extraSpawners.some((s) => s.id === 'spiral')) {
-        run.extraSpawners.push(createSpiralSpawner());
-      }
-      run.danger += 0.34;
+    description: 'Spiral launchers spin faster every stack, doubling their paired bolts.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'spiral', createSpiralSpawner);
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
+    },
+  },
+  {
+    id: 'ruptureBloom',
+    name: 'Rupture Bloom',
+    description: 'Large glowing seeds mark the floor, then explode into shard halos.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'rupture', () => createRuptureSpawner('rupture'));
+      spawner.level = stack;
+      run.danger += 0.32 + stack * 0.05;
+    },
+  },
+  {
+    id: 'emberPulse',
+    name: 'Ember Pulse',
+    description: 'Clusters of embers pop near you, sending fiery arcs outward.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'pulse', () => createPulseSpawner('pulse'));
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
+    },
+  },
+  {
+    id: 'sunSpire',
+    name: 'Sun Spire',
+    description: 'Warning pillars erupt upward and burst into vertical sprays.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'spire', () => createSpireSpawner('spire'));
+      spawner.level = stack;
+      run.danger += 0.33 + stack * 0.05;
+    },
+  },
+  {
+    id: 'gloomMines',
+    name: 'Gloom Mines',
+    description: 'Large mines drop in and detonate into crossfire when approached.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'mine', () => createMineSpawner('mine'));
+      spawner.level = stack;
+      run.danger += 0.31 + stack * 0.05;
+    },
+  },
+  {
+    id: 'lanternOrbit',
+    name: 'Lantern Orbit',
+    description: 'Orbiting lanterns trail you then detonate. Stacks add lanterns.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'lantern', () => createLanternSpawner('lantern'));
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
+    },
+  },
+  {
+    id: 'prismVolley',
+    name: 'Prism Volley',
+    description: 'Prismatic volleys carve across diagonals, thickening each stack.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'volley', () => createVolleySpawner('volley'));
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
+    },
+  },
+  {
+    id: 'voidComet',
+    name: 'Void Comets',
+    description: 'Slow comets streak in with trails and explode on impact.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'comet', () => createCometSpawner('comet'));
+      spawner.level = stack;
+      run.danger += 0.3 + stack * 0.05;
+    },
+  },
+  {
+    id: 'mirrorEcho',
+    name: 'Mirror Echo',
+    description: 'Illusory clones dash forward then burst. Stacks spawn more clones.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'echo', () => createEchoSpawner('echo'));
+      spawner.level = stack;
+      run.danger += 0.29 + stack * 0.05;
+    },
+  },
+  {
+    id: 'tideBreaker',
+    name: 'Tide Breaker',
+    description: 'Floor geysers surge upward in waves and explode outward.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'geyser', () => createGeyserSpawner('geyser'));
+      spawner.level = stack;
+      run.danger += 0.33 + stack * 0.05;
+    },
+  },
+  {
+    id: 'shockFracture',
+    name: 'Shock Fracture',
+    description: 'Lightning fractures mark a line then detonate sequentially.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'fracture', () => createFractureSpawner('fracture'));
+      spawner.level = stack;
+      run.danger += 0.34 + stack * 0.05;
+    },
+  },
+  {
+    id: 'emberBloom',
+    name: 'Ember Bloom',
+    description: 'Explosive pollen drifts slowly, then detonates into spirals.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'emberBloom', () => createBloomSpawner('emberBloom'));
+      spawner.level = stack;
+      run.danger += 0.31 + stack * 0.05;
+    },
+  },
+  {
+    id: 'chainCataclysm',
+    name: 'Chain Cataclysm',
+    description: 'Linked explosions crawl across the arena once armed.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'chain', () => createChainSpawner('chain'));
+      spawner.level = stack;
+      run.danger += 0.35 + stack * 0.05;
     },
   },
 ];
@@ -262,8 +380,8 @@ function createPlayer() {
   return {
     x: WIDTH / 2,
     y: HEIGHT / 2,
-    radius: 7,
-    color: '#7ff7ff',
+    radius: 8.5,
+    color: '#e4f4ff',
     hpMax: 100,
     hp: 100,
     staminaMax: 100,
@@ -274,11 +392,12 @@ function createPlayer() {
     speed: 140,
     speedMultiplier: 1,
     rushMultiplier: 1.65,
-    dashDistance: 160,
-    dashCooldownBase: 1.3,
+    dashDistance: 110,
+    dashCooldownBase: 1.1,
     dashCooldown: 0,
     dashCost: 25,
     invuln: 0,
+    armorTimer: 0,
     lastDir: { x: 1, y: 0 },
     choiceHistory: [],
     hurtTimer: 0,
@@ -295,6 +414,7 @@ function createRun(options = {}) {
     spawnRate: 1,
     bulletSpeed: 1,
     baseSpawn: BASE_SPAWN,
+    spawnAcceleration: BASE_SPAWN_ACCEL,
     nextChoice: CHOICE_INTERVAL,
     choiceInterval: CHOICE_INTERVAL,
     awaitingChoice: false,
@@ -312,6 +432,10 @@ function createRun(options = {}) {
     flash: 0,
     rushTrailTimer: 0,
     choicePool: snapshotChoicePool(),
+    healTimer: HEAL_INTERVAL,
+    pickups: [],
+    choiceStacks: {},
+    mirrorBloomLevel: 0,
   };
 }
 
@@ -319,72 +443,94 @@ function snapshotChoicePool() {
   return getUnlockedChoiceIds();
 }
 
+function ensureSpawner(run, id, factory) {
+  let spawner = run.extraSpawners.find((s) => s.id === id);
+  if (!spawner) {
+    spawner = factory();
+    run.extraSpawners.push(spawner);
+  }
+  return spawner;
+}
+
 function createLaserSpawner() {
-  return {
+  const spawner = {
     id: 'laser',
-    timer: 5,
-    tick: (run, dt) => {
-      run.laserTimer = (run.laserTimer || 0) - dt;
-      if ((run.laserTimer || 0) <= 0) {
-        spawnLaser(run);
-        run.laserTimer = rand(5, 8);
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.35;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawnLaser(run, spawner.level);
+        spawner.timer = rand(4.5, 6.5) / haste;
       }
     },
   };
+  return spawner;
 }
 
 function createTileSpawner() {
-  return {
+  const spawner = {
     id: 'tile',
-    timer: 4,
-    tick: (run, dt) => {
-      run.tileTimer = (run.tileTimer || 0) - dt;
-      if ((run.tileTimer || 0) <= 0) {
-        spawnTileHazard(run);
-        run.tileTimer = rand(4, 6);
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawnTileHazard(run, spawner.level);
+        spawner.timer = rand(3.5, 5.5) / haste;
       }
     },
   };
+  return spawner;
 }
 
 function createShardSpawner() {
-  return {
+  const spawner = {
     id: 'shard',
-    tick: (run, dt) => {
-      run.shardTimer = (run.shardTimer || 0) - dt;
-      if ((run.shardTimer || 0) <= 0) {
-        spawnShardBurst(run);
-        run.shardTimer = rand(2.5, 4.5);
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.3;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        queueShardBurst(run, spawner.level);
+        spawner.timer = rand(2.8, 4.5) / haste;
       }
     },
   };
+  return spawner;
 }
 
 function createHaloSpawner() {
   let angle = 0;
   const spawner = {
     id: 'halo',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      angle += dt * 1.2;
-      if (this.timer <= 0) {
-        this.timer = rand(1.8, 2.3);
-        const count = 12;
+      const rate = 0.9 + spawner.level * 0.15;
+      spawner.timer -= dt * rate;
+      angle += dt * rate;
+      if (spawner.timer <= 0) {
+        const emitters = 2 + spawner.level;
+        const count = 8 + spawner.level * 4;
         for (let i = 0; i < count; i++) {
           const theta = angle + (Math.PI * 2 * i) / count;
           run.bullets.push({
-            x: WIDTH / 2 + Math.cos(theta) * 24,
-            y: HEIGHT / 2 + Math.sin(theta) * 24,
-            vx: Math.cos(theta) * 140,
-            vy: Math.sin(theta) * 140,
-            radius: 5,
+            x: WIDTH / 2 + Math.cos(theta) * (20 + emitters * 6),
+            y: HEIGHT / 2 + Math.sin(theta) * (20 + emitters * 6),
+            vx: Math.cos(theta) * (130 + spawner.level * 20),
+            vy: Math.sin(theta) * (130 + spawner.level * 20),
+            radius: 4 + spawner.level * 0.4,
             type: 'circle',
-            damage: 8,
+            damage: 7 + spawner.level * 1.5,
             color: '#9ef1ff',
           });
         }
         audio.play('bullet');
+        spawner.timer = rand(1.6, 2.2) / rate;
       }
     },
   };
@@ -394,22 +540,30 @@ function createHaloSpawner() {
 function createMeteorSpawner() {
   const spawner = {
     id: 'meteor',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(2.4, 3.8);
-        run.bullets.push({
-          x: rand(30, WIDTH - 30),
-          y: -30,
-          vx: rand(-30, 30),
-          vy: rand(120, 180) * run.bulletSpeed,
-          size: rand(18, 28),
-          type: 'square',
-          damage: 18,
-          color: '#ff9c5b',
-        });
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const drops = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < drops; i++) {
+          run.bullets.push({
+            x: rand(30, WIDTH - 30),
+            y: -30,
+            vx: rand(-40, 40),
+            vy: rand(110, 170) * run.bulletSpeed,
+            size: rand(18, 28) + spawner.level * 2,
+            type: 'square',
+            damage: 16 + spawner.level * 3,
+            color: '#ff9c5b',
+            warning: 0.4,
+            spawnX: rand(40, WIDTH - 40),
+            spawnY: rand(20, HEIGHT / 2),
+          });
+        }
         audio.play('bullet');
+        spawner.timer = rand(2.6, 3.8) / haste;
       }
     },
   };
@@ -419,30 +573,32 @@ function createMeteorSpawner() {
 function createFanSpawner() {
   const spawner = {
     id: 'fan',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(2.2, 3.4);
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
         const edge = randInt(0, 3);
         const point = getEdgePoint(edge);
         const baseAngle = edge === 0 ? Math.PI / 2 : edge === 1 ? Math.PI : edge === 2 ? -Math.PI / 2 : 0;
-        const count = 5;
+        const count = 5 + spawner.level;
         for (let i = 0; i < count; i++) {
-          const offset = ((i - (count - 1) / 2) / (count - 1)) * (Math.PI / 4);
+          const offset = ((i - (count - 1) / 2) / Math.max(1, count - 1)) * (Math.PI / 3);
           const angle = baseAngle + offset;
           run.bullets.push({
             x: point.x,
             y: point.y,
-            vx: Math.cos(angle) * 180,
-            vy: Math.sin(angle) * 180,
+            vx: Math.cos(angle) * (160 + spawner.level * 20),
+            vy: Math.sin(angle) * (160 + spawner.level * 20),
             radius: 4,
             type: 'circle',
-            damage: 8,
+            damage: 7 + spawner.level,
             color: '#f2b6ff',
           });
         }
         audio.play('bullet');
+        spawner.timer = rand(2, 3.1) / haste;
       }
     },
   };
@@ -452,29 +608,34 @@ function createFanSpawner() {
 function createBlinkSpawner() {
   const spawner = {
     id: 'blink',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(1.8, 2.8);
-        const spawnX = clamp(run.player.x + rand(-120, 120), 30, WIDTH - 30);
-        const spawnY = clamp(run.player.y + rand(-120, 120), 30, HEIGHT - 30);
-        const angle = Math.atan2(run.player.y - spawnY, run.player.x - spawnX);
-        const speed = 220;
-        run.bullets.push({
-          x: spawnX,
-          y: spawnY,
-          spawnX,
-          spawnY,
-          warning: 0.7,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          radius: 5,
-          type: 'circle',
-          damage: 12,
-          color: '#ffec8f',
-        });
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const waves = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < waves; i++) {
+          const spawnX = clamp(run.player.x + rand(-140, 140), 30, WIDTH - 30);
+          const spawnY = clamp(run.player.y + rand(-140, 140), 30, HEIGHT - 30);
+          const angle = Math.atan2(run.player.y - spawnY, run.player.x - spawnX);
+          const speed = 220 + spawner.level * 15;
+          run.bullets.push({
+            x: spawnX,
+            y: spawnY,
+            spawnX,
+            spawnY,
+            warning: 0.65,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            radius: 5,
+            type: 'circle',
+            damage: 10 + spawner.level,
+            color: '#ffec8f',
+          });
+        }
         audio.play('bullet');
+        spawner.timer = rand(1.6, 2.4) / haste;
       }
     },
   };
@@ -484,20 +645,26 @@ function createBlinkSpawner() {
 function createNovaSpawner() {
   const spawner = {
     id: 'nova',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(3.8, 5.2);
-        run.hazards.push({
-          type: 'pod',
-          x: rand(80, WIDTH - 80),
-          y: rand(80, HEIGHT - 80),
-          timer: 1.4,
-          ttl: 1.4,
-          radius: 16,
-          damage: 10,
-        });
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const pods = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < pods; i++) {
+          run.hazards.push({
+            type: 'pod',
+            x: rand(70, WIDTH - 70),
+            y: rand(70, HEIGHT - 70),
+            timer: 1.2,
+            ttl: 1.2,
+            radius: 16 + spawner.level * 3,
+            damage: 10 + spawner.level * 3,
+            stacks: spawner.level,
+          });
+        }
+        spawner.timer = rand(3.6, 4.8) / haste;
       }
     },
   };
@@ -507,24 +674,29 @@ function createNovaSpawner() {
 function createSeekerSpawner() {
   const spawner = {
     id: 'seeker',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(2.2, 3.2);
-        run.bullets.push({
-          x: rand(50, WIDTH - 50),
-          y: rand(50, HEIGHT - 50),
-          vx: rand(-30, 30),
-          vy: rand(-30, 30),
-          radius: 6,
-          type: 'circle',
-          damage: 10,
-          color: '#ff6fd8',
-          seek: 110,
-          maxSpeed: 190,
-        });
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < count; i++) {
+          run.bullets.push({
+            x: rand(50, WIDTH - 50),
+            y: rand(50, HEIGHT - 50),
+            vx: rand(-30, 30),
+            vy: rand(-30, 30),
+            radius: 5 + spawner.level * 0.4,
+            type: 'circle',
+            damage: 9 + spawner.level,
+            color: '#ff6fd8',
+            seek: 110 + spawner.level * 20,
+            maxSpeed: 190 + spawner.level * 15,
+          });
+        }
         audio.play('bullet');
+        spawner.timer = rand(2.1, 3) / haste;
       }
     },
   };
@@ -534,21 +706,23 @@ function createSeekerSpawner() {
 function createCascadeSpawner() {
   const spawner = {
     id: 'cascade',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(4, 5.5);
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
         run.hazards.push({
           type: 'cascade',
           x: rand(60, WIDTH - 60),
           y: rand(60, HEIGHT - 60),
-          waves: 3,
-          radius: 30,
-          delay: 0.35,
-          timer: 0.35,
-          damage: 8,
+          waves: 3 + spawner.level,
+          radius: 30 + spawner.level * 8,
+          delay: 0.3,
+          timer: 0.3,
+          damage: 8 + spawner.level * 2,
         });
+        spawner.timer = rand(3.5, 4.5) / haste;
       }
     },
   };
@@ -558,42 +732,45 @@ function createCascadeSpawner() {
 function createTunnelSpawner() {
   const spawner = {
     id: 'tunnel',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(3, 4.4);
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
         const horizontal = Math.random() < 0.5;
+        const gap = Math.max(36, 70 - spawner.level * 6);
         if (horizontal) {
           const y = rand(50, HEIGHT - 50);
-          for (let x = 20; x < WIDTH; x += 60) {
+          for (let x = 20; x < WIDTH; x += gap) {
             run.bullets.push({
               x,
               y,
               vx: 0,
-              vy: rand(90, 140) * (Math.random() < 0.5 ? 1 : -1),
+              vy: 190 + spawner.level * 25,
               radius: 4,
-              damage: 7,
+              damage: 7 + spawner.level,
               type: 'circle',
               color: '#7ff7ff',
             });
           }
         } else {
           const x = rand(50, WIDTH - 50);
-          for (let y = 20; y < HEIGHT; y += 60) {
+          for (let y = 20; y < HEIGHT; y += gap) {
             run.bullets.push({
               x,
               y,
-              vx: rand(90, 140) * (Math.random() < 0.5 ? 1 : -1),
+              vx: 190 + spawner.level * 25,
               vy: 0,
               radius: 4,
-              damage: 7,
+              damage: 7 + spawner.level,
               type: 'circle',
               color: '#7ff7ff',
             });
           }
         }
         audio.play('bullet');
+        spawner.timer = rand(2.6, 3.6) / haste;
       }
     },
   };
@@ -603,25 +780,27 @@ function createTunnelSpawner() {
 function createRainSpawner() {
   const spawner = {
     id: 'rain',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.timer = rand(1.2, 1.6);
-        const count = randInt(6, 10);
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = randInt(6, 10) + spawner.level * 2;
         for (let i = 0; i < count; i++) {
           run.bullets.push({
             x: rand(20, WIDTH - 20),
             y: -10,
             vx: rand(-10, 10),
-            vy: rand(130, 200),
+            vy: rand(130, 200) + spawner.level * 15,
             radius: 3,
             type: 'circle',
-            damage: 5,
+            damage: 5 + spawner.level,
             color: '#ffa4a4',
           });
         }
         audio.play('bullet');
+        spawner.timer = rand(1.1, 1.4) / haste;
       }
     },
   };
@@ -632,28 +811,394 @@ function createSpiralSpawner() {
   let angle = 0;
   const spawner = {
     id: 'spiral',
+    level: 1,
     timer: 0,
     tick(run, dt) {
-      this.timer -= dt;
-      angle += dt * 2.2;
-      if (this.timer <= 0) {
-        this.timer = 0.6;
-        const speed = 160;
-        const offsets = [0, Math.PI];
-        offsets.forEach((off) => {
-          const theta = angle + off;
+      const rate = 2.2 + spawner.level * 0.3;
+      spawner.timer -= dt * rate;
+      angle += dt * rate;
+      if (spawner.timer <= 0) {
+        const speed = 160 + spawner.level * 15;
+        const arms = 2 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < arms; i++) {
+          const theta = angle + (Math.PI * 2 * i) / arms;
           run.bullets.push({
             x: WIDTH / 2,
             y: HEIGHT / 2,
             vx: Math.cos(theta) * speed,
             vy: Math.sin(theta) * speed,
             radius: 4,
-            damage: 7,
+            damage: 7 + spawner.level,
             type: 'circle',
             color: '#c1a9ff',
           });
-        });
+        }
         audio.play('bullet');
+        spawner.timer = 0.6 / rate;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createRuptureSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const blooms = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < blooms; i++) {
+          run.hazards.push({
+            type: 'rupture',
+            x: rand(60, WIDTH - 60),
+            y: rand(60, HEIGHT - 60),
+            timer: 0.9,
+            ttl: 0.9,
+            level: spawner.level,
+            color: '#ff8c7a',
+          });
+        }
+        spawner.timer = rand(3, 4.2) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createPulseSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const pulses = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < pulses; i++) {
+          const px = clamp(run.player.x + rand(-140, 140), 40, WIDTH - 40);
+          const py = clamp(run.player.y + rand(-140, 140), 40, HEIGHT - 40);
+          run.hazards.push({
+            type: 'pulse',
+            x: px,
+            y: py,
+            timer: 0.6,
+            ttl: 0.6,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(2.4, 3.4) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSpireSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const pillars = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < pillars; i++) {
+          const vertical = Math.random() < 0.5;
+          run.hazards.push({
+            type: 'spire',
+            vertical,
+            pos: vertical ? rand(40, WIDTH - 40) : rand(40, HEIGHT - 40),
+            timer: 0.85,
+            ttl: 0.85,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(3.2, 4.3) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createMineSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const mines = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < mines; i++) {
+          run.hazards.push({
+            type: 'mine',
+            x: rand(50, WIDTH - 50),
+            y: rand(50, HEIGHT - 50),
+            timer: rand(1.4, 2.2),
+            radius: 26 + spawner.level * 4,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(3.4, 4.8) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createLanternSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const lanterns = 1 + spawner.level;
+        for (let i = 0; i < lanterns; i++) {
+          const angle = rand(0, Math.PI * 2);
+          run.hazards.push({
+            type: 'lantern',
+            x: WIDTH / 2 + Math.cos(angle) * 180,
+            y: HEIGHT / 2 + Math.sin(angle) * 150,
+            vx: rand(-40, 40),
+            vy: rand(-40, 40),
+            timer: 1.4 + spawner.level * 0.15,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(3.2, 4.4) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createVolleySpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = 6 + spawner.level * 2;
+        const diag = Math.random() < 0.5;
+        for (let i = 0; i < count; i++) {
+          const t = i / (count - 1);
+          const x = diag ? t * WIDTH : (1 - t) * WIDTH;
+          const y = diag ? (1 - t) * HEIGHT : t * HEIGHT;
+          const angle = Math.atan2(HEIGHT / 2 - y, WIDTH / 2 - x);
+          run.bullets.push({
+            x,
+            y,
+            vx: Math.cos(angle) * (200 + spawner.level * 20),
+            vy: Math.sin(angle) * (200 + spawner.level * 20),
+            radius: 4,
+            damage: 8 + spawner.level,
+            type: 'circle',
+            color: '#7fe1ff',
+          });
+        }
+        audio.play('bullet');
+        spawner.timer = rand(2.5, 3.5) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createCometSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const comets = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < comets; i++) {
+          const edge = randInt(0, 3);
+          const point = getEdgePoint(edge);
+          const target = { x: rand(60, WIDTH - 60), y: rand(60, HEIGHT - 60) };
+          const angle = Math.atan2(target.y - point.y, target.x - point.x);
+          run.bullets.push({
+            x: point.x,
+            y: point.y,
+            vx: Math.cos(angle) * (140 + spawner.level * 15),
+            vy: Math.sin(angle) * (140 + spawner.level * 15),
+            radius: 7,
+            damage: 12 + spawner.level * 2,
+            type: 'circle',
+            color: '#f7e286',
+            life: 4,
+            explodeCount: 6 + spawner.level * 2,
+            explodeSpeed: 140 + spawner.level * 15,
+          });
+        }
+        audio.play('bullet');
+        spawner.timer = rand(3.3, 4.6) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createEchoSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const echoes = 1 + spawner.level;
+        for (let i = 0; i < echoes; i++) {
+          const dir = { x: run.player.lastDir.x || 1, y: run.player.lastDir.y || 0 };
+          const mag = Math.hypot(dir.x, dir.y) || 1;
+          run.hazards.push({
+            type: 'echo',
+            x: run.player.x,
+            y: run.player.y,
+            vx: (dir.x / mag) * (220 + spawner.level * 20) + rand(-40, 40),
+            vy: (dir.y / mag) * (220 + spawner.level * 20) + rand(-40, 40),
+            timer: 0.7,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(3, 4.1) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createGeyserSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const columns = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < columns; i++) {
+          run.hazards.push({
+            type: 'geyser',
+            x: rand(60, WIDTH - 60),
+            timer: 0.9,
+            ttl: 0.9,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(3, 4.2) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createFractureSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const start = { x: rand(40, WIDTH - 40), y: rand(40, HEIGHT - 40) };
+        const angle = rand(0, Math.PI * 2);
+        const segments = 4 + spawner.level;
+        const points = [];
+        for (let i = 0; i < segments; i++) {
+          const dist = 30 + i * 25;
+          points.push({
+            x: clamp(start.x + Math.cos(angle) * dist + rand(-20, 20), 20, WIDTH - 20),
+            y: clamp(start.y + Math.sin(angle) * dist + rand(-20, 20), 20, HEIGHT - 20),
+          });
+        }
+        run.hazards.push({
+          type: 'fracture',
+          points,
+          index: 0,
+          timer: 0.4,
+          level: spawner.level,
+        });
+        spawner.timer = rand(3.6, 4.6) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createBloomSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const motes = 1 + spawner.level;
+        for (let i = 0; i < motes; i++) {
+          run.hazards.push({
+            type: 'bloom',
+            x: rand(40, WIDTH - 40),
+            y: rand(40, HEIGHT - 40),
+            vx: rand(-30, 30),
+            vy: rand(-30, 30),
+            ttl: 2.2,
+            level: spawner.level,
+          });
+        }
+        spawner.timer = rand(3.5, 4.6) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createChainSpawner(id) {
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const links = 3 + spawner.level;
+        const nodes = [];
+        let current = { x: rand(40, WIDTH - 40), y: rand(40, HEIGHT - 40) };
+        for (let i = 0; i < links; i++) {
+          nodes.push({ ...current });
+          current = {
+            x: clamp(current.x + rand(-120, 120), 30, WIDTH - 30),
+            y: clamp(current.y + rand(-120, 120), 30, HEIGHT - 30),
+          };
+        }
+        run.hazards.push({
+          type: 'chain',
+          nodes,
+          timer: 1,
+          level: spawner.level,
+          progress: 0,
+        });
+        spawner.timer = rand(4, 5.3) / haste;
       }
     },
   };
@@ -711,13 +1256,17 @@ function enterQueue() {
   queueOverlay.classList.remove('hidden');
   queueMessage.textContent = 'Matching players across the grid...';
   clearQueueTimers();
-  const fallback = 8000;
+  const fallback = AI_FALLBACK_MS;
   state.queueDeadline = performance.now() + fallback;
   state.queueTicker = setInterval(() => {
     const remaining = Math.max(0, state.queueDeadline - performance.now());
     queueMessage.textContent = `Matching players... AI backup in ${(remaining / 1000).toFixed(1)}s`;
   }, 250);
   state.queueAIHandle = setTimeout(() => {
+    if (state.queueTicker) {
+      clearInterval(state.queueTicker);
+      state.queueTicker = null;
+    }
     queueMessage.textContent = 'No human rival arrived. Deploying adaptive AI...';
     state.queueTimeout = setTimeout(() => startPvp({ ai: true }), 1200);
   }, fallback);
@@ -756,7 +1305,7 @@ function clearQueueTimers() {
 function createAIRun() {
   const run = createRun({ mode: 'pvp', label: 'opponent' });
   run.player.color = '#ffa4a4';
-  run.skill = rand(1.2, 1.7);
+  run.skill = rand(1.8, 2.4);
   run.aiDamageTimer = 1;
   return run;
 }
@@ -820,6 +1369,7 @@ function updateRun(run, delta) {
   handleInput(run, delta);
   updateBullets(run, delta);
   updateHazards(run, delta);
+  updatePickups(run, delta);
   updateEffects(run, delta);
   if (run.flash > 0) {
     run.flash = Math.max(0, run.flash - delta);
@@ -827,11 +1377,17 @@ function updateRun(run, delta) {
   if (run.player.hurtTimer > 0) {
     run.player.hurtTimer = Math.max(0, run.player.hurtTimer - delta);
   }
+  if (run.healTimer > 0) {
+    run.healTimer -= delta;
+  } else {
+    spawnHealPickup(run);
+    run.healTimer = HEAL_INTERVAL;
+  }
 
   run.spawnTimer -= delta * run.spawnRate;
   if (run.spawnTimer <= 0) {
     spawnBullet(run);
-    run.spawnTimer = Math.max(0.35, run.baseSpawn - run.time * 0.01);
+    run.spawnTimer = Math.max(0.9, run.baseSpawn - run.time * run.spawnAcceleration);
   }
 
   run.extraSpawners.forEach((spawner) => spawner.tick && spawner.tick(run, delta));
@@ -886,6 +1442,7 @@ function handleInput(run, delta) {
 
   if (player.dashCooldown > 0) player.dashCooldown -= delta;
   if (player.invuln > 0) player.invuln -= delta;
+  if (player.armorTimer > 0) player.armorTimer = Math.max(0, player.armorTimer - delta);
 
   if (spending) {
     player.staminaDelay = 1.2;
@@ -916,7 +1473,8 @@ function tryDash() {
   player.y = Math.max(player.radius, Math.min(HEIGHT - player.radius, player.y));
   player.dashCooldown = player.dashCooldownBase;
   player.stamina = Math.max(0, player.stamina - player.dashCost);
-  player.invuln = 0.3;
+  player.invuln = Math.max(player.invuln, ARMOR_DURATION);
+  player.armorTimer = ARMOR_DURATION;
   player.staminaDelay = 1.4;
   addEffect(state.run, {
     type: 'dash',
@@ -925,6 +1483,13 @@ function tryDash() {
     ex: player.x,
     ey: player.y,
     ttl: 0.35,
+  });
+  addEffect(state.run, {
+    type: 'armor',
+    x: player.x,
+    y: player.y,
+    ttl: ARMOR_DURATION,
+    radius: player.radius + 10,
   });
   audio.play('dash');
 }
@@ -944,9 +1509,9 @@ document.addEventListener('keyup', (event) => {
 });
 
 function spawnBullet(run) {
-  if (run.bullets.length > 160) return;
+  if (run.bullets.length > 140) return;
   const edge = randInt(0, 3);
-  const speed = rand(60, 120) * run.bulletSpeed;
+  const speed = rand(55, 105) * run.bulletSpeed;
   let x, y, vx, vy;
   if (edge === 0) {
     x = rand(0, WIDTH);
@@ -984,7 +1549,7 @@ function spawnBullet(run) {
     warning: 0,
   };
 
-  if (Math.random() < 0.28) {
+  if (Math.random() < 0.2) {
     bullet.warning = rand(0.5, 1.1);
     bullet.spawnX = rand(30, WIDTH - 30);
     bullet.spawnY = rand(30, HEIGHT - 30);
@@ -998,57 +1563,126 @@ function spawnBullet(run) {
   run.bullets.push(bullet);
   audio.play('bullet');
 
-  if (run.mirrorBloom && run.spawnCount % 4 === 0) {
-    run.bullets.push({ ...bullet, x: bullet.x + 10, y: bullet.y + 10 });
+  if (run.mirrorBloom) {
+    const interval = Math.max(2, 7 - Math.max(1, run.mirrorBloomLevel || 1));
+    if (run.spawnCount % interval === 0) {
+      run.bullets.push({
+        ...bullet,
+        x: bullet.x + 10,
+        y: bullet.y + 10,
+        vx: bullet.vx,
+        vy: bullet.vy,
+      });
+    }
   }
 }
 
-function spawnLaser(run) {
+function explodeBullet(run, bullet) {
+  if (!bullet.explodeCount) return;
+  const count = bullet.explodeCount;
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count;
+    run.bullets.push({
+      x: bullet.x,
+      y: bullet.y,
+      vx: Math.cos(angle) * (bullet.explodeSpeed || 140),
+      vy: Math.sin(angle) * (bullet.explodeSpeed || 140),
+      radius: 3,
+      damage: Math.max(6, (bullet.damage || 8) * 0.6),
+      type: 'circle',
+      color: '#ffa86d',
+    });
+  }
+  audio.play('bullet');
+}
+
+function spawnLaser(run, level = 1) {
   const horizontal = Math.random() < 0.5;
   const offset = horizontal ? rand(40, HEIGHT - 40) : rand(40, WIDTH - 40);
+  const width = 10 + level * 2;
   run.hazards.push({
     type: 'laser',
     horizontal,
     offset,
-    telegraph: 1.4,
-    duration: 1.6,
-    width: 12,
-    damage: 25,
+    telegraph: Math.max(0.8, 1.3 - level * 0.08),
+    duration: 1.3 + level * 0.15,
+    width,
+    damage: 20 + level * 6,
   });
 }
 
-function spawnTileHazard(run) {
-  const size = rand(50, 120);
+function spawnTileHazard(run, level = 1) {
+  const size = rand(50, 100) + level * 10;
   run.hazards.push({
     type: 'tile',
     x: rand(size / 2, WIDTH - size / 2),
     y: rand(size / 2, HEIGHT - size / 2),
     size,
-    blink: rand(0.8, 1.2),
-    timer: rand(0.8, 1.2),
+    blink: rand(0.6, 0.9),
+    timer: rand(0.7, 1),
     active: false,
-    damage: 30,
+    damage: 24 + level * 4,
   });
 }
 
-function spawnShardBurst(run) {
-  const cx = rand(40, WIDTH - 40);
-  const cy = rand(40, HEIGHT - 40);
-  const count = randInt(6, 10);
+function queueShardBurst(run, level = 1) {
+  const bursts = 1 + Math.floor(level / 2);
+  for (let i = 0; i < bursts; i++) {
+    run.hazards.push({
+      type: 'shardWarn',
+      x: rand(50, WIDTH - 50),
+      y: rand(50, HEIGHT - 50),
+      timer: 0.85,
+      ttl: 0.85,
+      level,
+    });
+  }
+}
+
+function spawnShardBurst(run, cx, cy, level = 1) {
+  const count = randInt(6, 10) + level * 2;
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count;
     run.bullets.push({
       x: cx,
       y: cy,
-      vx: Math.cos(angle) * rand(120, 180),
-      vy: Math.sin(angle) * rand(120, 180),
+      vx: Math.cos(angle) * rand(120, 180 + level * 15),
+      vy: Math.sin(angle) * rand(120, 180 + level * 15),
       radius: 4,
       type: 'circle',
-      damage: 6,
+      damage: 6 + level,
       color: '#f55353',
     });
   }
   audio.play('bullet');
+}
+
+function spawnHealPickup(run) {
+  if (!run.pickups) run.pickups = [];
+  run.pickups.push({
+    type: 'heal',
+    x: rand(40, WIDTH - 40),
+    y: rand(40, HEIGHT - 40),
+    radius: 18,
+    pulse: 0,
+    amount: HEAL_AMOUNT,
+  });
+}
+
+function updatePickups(run, delta) {
+  if (!run.pickups || !run.pickups.length) return;
+  const player = run.player;
+  run.pickups = run.pickups.filter((pickup) => {
+    pickup.pulse = ((pickup.pulse || 0) + delta) % 1;
+    const dist = Math.hypot(pickup.x - player.x, pickup.y - player.y);
+    if (dist < pickup.radius + player.radius) {
+      player.hp = Math.min(player.hpMax, player.hp + pickup.amount);
+      addEffect(run, { type: 'heal', x: pickup.x, y: pickup.y, ttl: 0.5, radius: pickup.radius + 10 });
+      audio.play('heal');
+      return false;
+    }
+    return true;
+  });
 }
 
 function addEffect(run, effect) {
@@ -1079,8 +1713,9 @@ function updateBullets(run, delta) {
     if (run.gravityPull) {
       const dx = player.x - bullet.x;
       const dy = player.y - bullet.y;
-      bullet.vx += (dx / 800) * delta * 60;
-      bullet.vy += (dy / 800) * delta * 60;
+      const pull = 0.8 + run.gravityPull * 0.25;
+      bullet.vx += (dx / 800) * delta * 60 * pull;
+      bullet.vy += (dy / 800) * delta * 60 * pull;
     }
     if (bullet.seek) {
       const dx = player.x - bullet.x;
@@ -1097,12 +1732,23 @@ function updateBullets(run, delta) {
     }
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
+    let remove = false;
     if (
       bullet.x < -40 ||
       bullet.x > WIDTH + 40 ||
       bullet.y < -40 ||
       bullet.y > HEIGHT + 40
     ) {
+      remove = true;
+    }
+    if (typeof bullet.life === 'number') {
+      bullet.life -= delta;
+      if (bullet.life <= 0) {
+        remove = true;
+      }
+    }
+    if (remove) {
+      explodeBullet(run, bullet);
       run.bullets.splice(i, 1);
       continue;
     }
@@ -1111,6 +1757,7 @@ function updateBullets(run, delta) {
       const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
       if (dist < bullet.radius + player.radius) {
         applyDamage(run, player, bullet.damage);
+        explodeBullet(run, bullet);
         run.bullets.splice(i, 1);
       }
     } else if (bullet.type === 'square') {
@@ -1119,6 +1766,7 @@ function updateBullets(run, delta) {
         Math.abs(bullet.y - player.y) < bullet.size / 2 + player.radius
       ) {
         applyDamage(run, player, bullet.damage);
+        explodeBullet(run, bullet);
         run.bullets.splice(i, 1);
       }
     }
@@ -1188,6 +1836,163 @@ function updateHazards(run, delta) {
           run.hazards.splice(i, 1);
         }
       }
+    } else if (hazard.type === 'shardWarn') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        spawnShardBurst(run, hazard.x, hazard.y, hazard.level);
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'rupture') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        const count = 6 + hazard.level * 3;
+        spawnRing(run, hazard.x, hazard.y, count, 140 + hazard.level * 20, hazard.color, 10 + hazard.level * 2);
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'pulse') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        const count = 5 + hazard.level * 2;
+        for (let j = 0; j < count; j++) {
+          const angle = (Math.PI * 2 * j) / count + rand(-0.2, 0.2);
+          run.bullets.push({
+            x: hazard.x,
+            y: hazard.y,
+            vx: Math.cos(angle) * (160 + hazard.level * 20),
+            vy: Math.sin(angle) * (160 + hazard.level * 20),
+            radius: 4,
+            damage: 7 + hazard.level,
+            type: 'circle',
+            color: '#ff9a72',
+          });
+        }
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'spire') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        if (hazard.vertical) {
+          for (let y = 0; y <= HEIGHT; y += 35) {
+            run.bullets.push({
+              x: hazard.pos,
+              y,
+              vx: 0,
+              vy: 220 + hazard.level * 25,
+              radius: 4,
+              damage: 10 + hazard.level,
+              type: 'circle',
+              color: '#ffd294',
+            });
+          }
+        } else {
+          for (let x = 0; x <= WIDTH; x += 35) {
+            run.bullets.push({
+              x,
+              y: hazard.pos,
+              vx: 220 + hazard.level * 25,
+              vy: 0,
+              radius: 4,
+              damage: 10 + hazard.level,
+              type: 'circle',
+              color: '#ffd294',
+            });
+          }
+        }
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'mine') {
+      hazard.timer -= delta;
+      const dist = Math.hypot(player.x - hazard.x, player.y - hazard.y);
+      if (hazard.timer <= 0 || dist < hazard.radius + player.radius + 4) {
+        const dirs = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+        dirs.forEach((angle) => {
+          run.bullets.push({
+            x: hazard.x,
+            y: hazard.y,
+            vx: Math.cos(angle) * 220,
+            vy: Math.sin(angle) * 220,
+            radius: 5,
+            damage: 12 + hazard.level * 2,
+            type: 'circle',
+            color: '#ffae73',
+          });
+        });
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'lantern') {
+      hazard.timer -= delta;
+      const dx = player.x - hazard.x;
+      const dy = player.y - hazard.y;
+      hazard.vx += (dx / 120) * delta * 60;
+      hazard.vy += (dy / 120) * delta * 60;
+      hazard.x += hazard.vx * delta;
+      hazard.y += hazard.vy * delta;
+      if (hazard.timer <= 0) {
+        spawnRing(run, hazard.x, hazard.y, 10 + hazard.level * 2, 150 + hazard.level * 15, '#ffe682', 9 + hazard.level);
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'geyser') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        for (let y = 0; y <= HEIGHT; y += 30) {
+          run.bullets.push({
+            x: hazard.x,
+            y,
+            vx: rand(-60, 60),
+            vy: y < HEIGHT / 2 ? -160 - hazard.level * 20 : 160 + hazard.level * 20,
+            radius: 4,
+            damage: 9 + hazard.level,
+            type: 'circle',
+            color: '#7ff7ff',
+          });
+        }
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'fracture') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        const point = hazard.points[hazard.index];
+        spawnRing(run, point.x, point.y, 8 + hazard.level, 130, '#f2f2ff', 7 + hazard.level);
+        hazard.index += 1;
+        hazard.timer = 0.25;
+        if (hazard.index >= hazard.points.length) {
+          run.hazards.splice(i, 1);
+        }
+      }
+    } else if (hazard.type === 'bloom') {
+      hazard.ttl -= delta;
+      hazard.x += hazard.vx * delta;
+      hazard.y += hazard.vy * delta;
+      if (hazard.ttl <= 0) {
+        const count = 10 + hazard.level * 2;
+        spawnRing(run, hazard.x, hazard.y, count, 110 + hazard.level * 10, '#ffadc7', 8 + hazard.level);
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'chain') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        if (hazard.progress >= hazard.nodes.length) {
+          run.hazards.splice(i, 1);
+          continue;
+        }
+        const node = hazard.nodes[hazard.progress];
+        spawnRing(run, node.x, node.y, 6 + hazard.level, 150, '#ffb397', 10 + hazard.level);
+        hazard.progress += 1;
+        hazard.timer = 0.25;
+      }
+    } else if (hazard.type === 'echo') {
+      hazard.timer -= delta;
+      hazard.x += hazard.vx * delta;
+      hazard.y += hazard.vy * delta;
+      if (hazard.timer <= 0) {
+        const count = 6 + hazard.level;
+        spawnRing(run, hazard.x, hazard.y, count, 120 + hazard.level * 10, '#ffffff', 7 + hazard.level);
+        run.hazards.splice(i, 1);
+      }
     }
   }
 }
@@ -1215,8 +2020,8 @@ function updateAIRun(run, delta) {
   run.nextChoice -= delta;
   run.aiDamageTimer -= delta;
   if (run.aiDamageTimer <= 0) {
-    run.aiDamageTimer = rand(0.9, 1.3);
-    const intensity = 0.6 + run.danger * 0.35 + run.time * 0.01;
+    run.aiDamageTimer = rand(0.8, 1.2);
+    const intensity = 0.8 + run.danger * 0.4 + run.time * 0.015;
     const dodge = run.skill;
     const chance = Math.random();
     if (chance > dodge / (dodge + intensity)) {
@@ -1285,7 +2090,10 @@ function presentChoices(run, opponentChoice = false) {
 }
 
 function applyChoice(choice, run) {
-  choice.apply(run);
+  if (!run.choiceStacks) run.choiceStacks = {};
+  const next = (run.choiceStacks[choice.id] || 0) + 1;
+  run.choiceStacks[choice.id] = next;
+  choice.apply(run, next);
   run.player.choiceHistory.push(choice.id);
 }
 
@@ -1356,6 +2164,18 @@ function drawEffects(run) {
       ctx.beginPath();
       ctx.arc(effect.x, effect.y, effect.radius * (1 - pct) + 10, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (effect.type === 'armor') {
+      ctx.strokeStyle = `rgba(127,247,255,${pct * 0.7})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius * pct + 20, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (effect.type === 'heal') {
+      ctx.strokeStyle = `rgba(110,247,127,${pct})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius * (1 + pct * 0.5), 0, Math.PI * 2);
+      ctx.stroke();
     }
   });
 }
@@ -1367,6 +2187,8 @@ function drawRun(run) {
   run.bullets.forEach((bullet) => {
     if (bullet.warning > 0) {
       ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      const lw = ctx.lineWidth;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(bullet.spawnX, bullet.spawnY, 18, 0, Math.PI * 2);
       ctx.stroke();
@@ -1376,6 +2198,7 @@ function drawRun(run) {
       ctx.moveTo(bullet.spawnX, bullet.spawnY - 12);
       ctx.lineTo(bullet.spawnX, bullet.spawnY + 12);
       ctx.stroke();
+      ctx.lineWidth = lw;
       return;
     }
     ctx.fillStyle = bullet.color;
@@ -1422,17 +2245,133 @@ function drawRun(run) {
       ctx.beginPath();
       ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (hazard.type === 'shardWarn') {
+      const pct = hazard.timer / hazard.ttl;
+      ctx.strokeStyle = `rgba(255,255,255,${0.4 * pct})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(hazard.x - 12, hazard.y);
+      ctx.lineTo(hazard.x + 12, hazard.y);
+      ctx.moveTo(hazard.x, hazard.y - 12);
+      ctx.lineTo(hazard.x, hazard.y + 12);
+      ctx.stroke();
+    } else if (hazard.type === 'rupture' || hazard.type === 'pulse') {
+      const pct = hazard.timer / hazard.ttl;
+      ctx.strokeStyle = `rgba(255,140,122,${pct})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 12 + (1 - pct) * 18, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (hazard.type === 'spire') {
+      ctx.strokeStyle = 'rgba(255,214,148,0.4)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (hazard.vertical) {
+        ctx.moveTo(hazard.pos, 0);
+        ctx.lineTo(hazard.pos, HEIGHT);
+      } else {
+        ctx.moveTo(0, hazard.pos);
+        ctx.lineTo(WIDTH, hazard.pos);
+      }
+      ctx.stroke();
+    } else if (hazard.type === 'mine') {
+      ctx.strokeStyle = 'rgba(255,180,100,0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (hazard.type === 'lantern') {
+      ctx.fillStyle = 'rgba(255,230,130,0.6)';
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 8 + hazard.level * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (hazard.type === 'geyser') {
+      ctx.fillStyle = 'rgba(127,247,255,0.2)';
+      ctx.fillRect(hazard.x - 10, 0, 20, HEIGHT);
+    } else if (hazard.type === 'fracture') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      hazard.points.forEach((point, idx) => {
+        if (idx === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+    } else if (hazard.type === 'bloom') {
+      ctx.fillStyle = 'rgba(255,180,200,0.4)';
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (hazard.type === 'chain') {
+      ctx.strokeStyle = 'rgba(255,140,120,0.25)';
+      ctx.beginPath();
+      hazard.nodes.forEach((node, idx) => {
+        if (idx === 0) ctx.moveTo(node.x, node.y);
+        else ctx.lineTo(node.x, node.y);
+      });
+      ctx.stroke();
+    } else if (hazard.type === 'echo') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.strokeRect(hazard.x - 8, hazard.y - 8, 16, 16);
     }
   });
 
-  ctx.fillStyle = player.hurtTimer > 0 ? '#ff9292' : player.color;
-  ctx.beginPath();
-  ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-  ctx.fill();
+  if (run.pickups) {
+    const lw = ctx.lineWidth;
+    run.pickups.forEach((pickup) => {
+      const pulse = Math.sin((pickup.pulse || 0) * Math.PI * 2) * 0.5 + 0.5;
+      ctx.strokeStyle = `rgba(110,247,127,${0.6 + pulse * 0.3})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(pickup.x, pickup.y, pickup.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pickup.x - pickup.radius / 2, pickup.y);
+      ctx.lineTo(pickup.x + pickup.radius / 2, pickup.y);
+      ctx.moveTo(pickup.x, pickup.y - pickup.radius / 2);
+      ctx.lineTo(pickup.x, pickup.y + pickup.radius / 2);
+      ctx.stroke();
+    });
+    ctx.lineWidth = lw;
+  }
+
+  drawPlayerShape(player);
   if (run.flash > 0) {
     ctx.fillStyle = `rgba(255,80,80,${run.flash * 0.4})`;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
   }
+}
+
+function drawPlayerShape(player) {
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  const baseColor = player.hurtTimer > 0 ? '#ff9292' : player.color;
+  ctx.fillStyle = baseColor;
+  if (player.armorTimer > 0) {
+    const glow = player.armorTimer / ARMOR_DURATION;
+    ctx.shadowColor = `rgba(255,255,255,${glow * 0.8})`;
+    ctx.shadowBlur = 15;
+  }
+  ctx.strokeStyle = '#05070c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const spikes = 5;
+  const inner = player.radius * 0.6;
+  const outer = player.radius + 4;
+  for (let i = 0; i < spikes * 2; i++) {
+    const radius = i % 2 === 0 ? outer : inner;
+    const angle = (Math.PI * i) / spikes;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawHUD() {
@@ -1444,10 +2383,24 @@ function drawHUD() {
   const player = run.player;
   const staminaPct = player.stamina / player.staminaMax;
   const hpPct = player.hp / player.hpMax;
-  const chips = player.choiceHistory.length
-    ? player.choiceHistory
+  const stacks = run.choiceStacks || {};
+  const ordered = [];
+  const seen = new Set();
+  for (let i = player.choiceHistory.length - 1; i >= 0; i--) {
+    const id = player.choiceHistory[i];
+    if (!seen.has(id)) {
+      seen.add(id);
+      ordered.unshift(id);
+    }
+  }
+  const chips = ordered.length
+    ? ordered
         .slice(-6)
-        .map((id) => `<span class="choice-chip">${CHOICE_LOOKUP[id]?.name || id}</span>`)
+        .map((id) => {
+          const count = stacks[id] || 1;
+          const label = CHOICE_LOOKUP[id]?.name || id;
+          return `<span class="choice-chip">${label}${count > 1 ? `<strong>×${count}</strong>` : ''}</span>`;
+        })
         .join('')
     : '<span class="choice-chip empty">No curses yet</span>';
   let opponentBlock = '';
@@ -1521,7 +2474,7 @@ function updateAccountAfterMatch(result) {
 
 rematchBtn.addEventListener('click', () => {
   if (state.mode === 'pvp') {
-    startPvp();
+    enterQueue();
   } else {
     startSolo();
   }
@@ -1630,7 +2583,9 @@ function renderUnlockList() {
     unlockListEl.innerHTML = '<span>No new curses earned this run.</span>';
     return;
   }
-  unlockListEl.innerHTML = state.recentUnlocks.map((name) => `<span>${name}</span>`).join('');
+  unlockListEl.innerHTML = state.recentUnlocks
+    .map((name) => `<span class="choice-chip">${name}</span>`)
+    .join('');
 }
 
 function awardUnlocks(run, result) {
@@ -1695,7 +2650,8 @@ function simpleHash(str) {
 
 function loadAccounts() {
   try {
-    const raw = localStorage.getItem('dot-matrix-accounts');
+    const raw =
+      localStorage.getItem('matrivade-accounts') || localStorage.getItem('dot-matrix-accounts');
     return raw ? JSON.parse(raw) : {};
   } catch (err) {
     return {};
@@ -1703,7 +2659,7 @@ function loadAccounts() {
 }
 
 function saveAccounts(obj) {
-  localStorage.setItem('dot-matrix-accounts', JSON.stringify(obj));
+  localStorage.setItem('matrivade-accounts', JSON.stringify(obj));
 }
 
 function createAudioSuite() {
@@ -1786,6 +2742,9 @@ function createAudioSuite() {
       case 'hurt':
         noise(0.2, 0.3);
         break;
+      case 'heal':
+        blip(520, 0.25, 0.18, 'sine');
+        break;
       case 'ui':
         blip(600, 0.08, 0.15, 'triangle');
         break;
@@ -1829,7 +2788,9 @@ function createAudioSuite() {
 
 function loadLeaderboard() {
   try {
-    const raw = localStorage.getItem('dot-matrix-leaderboard');
+    const raw =
+      localStorage.getItem('matrivade-leaderboard') ||
+      localStorage.getItem('dot-matrix-leaderboard');
     return raw ? JSON.parse(raw) : [];
   } catch (err) {
     return [];
@@ -1837,7 +2798,7 @@ function loadLeaderboard() {
 }
 
 function saveLeaderboard(list) {
-  localStorage.setItem('dot-matrix-leaderboard', JSON.stringify(list));
+  localStorage.setItem('matrivade-leaderboard', JSON.stringify(list));
 }
 
 function updateLeaderboard(run) {
