@@ -41,7 +41,7 @@
         <canvas id="gameCanvas" width="900" height="600"></canvas>
         <div class="hud" id="hud"></div>
         <div class="queue-overlay hidden" id="queueOverlay">
-          <p>Waiting for another challenger...</p>
+          <p id="queueMessage">Waiting for another challenger...</p>
           <div class="dot-loader"></div>
         </div>
         <div class="choice-overlay hidden" id="choiceOverlay">
@@ -55,11 +55,22 @@
         <div class="gameover-overlay hidden" id="gameOver">
           <h2 id="gameOverTitle">Round Over</h2>
           <p id="gameOverDetail"></p>
+          <div class="unlock-readout">
+            <h3>Unlocks this run</h3>
+            <div id="unlockList"></div>
+          </div>
           <div class="gameover-buttons">
             <button id="rematchBtn">Rematch</button>
             <button id="mainMenuBtn" class="ghost">Main Menu</button>
           </div>
         </div>
+      </section>
+      <section class="leaderboard-panel">
+        <div>
+          <h2>Solo Leaderboard</h2>
+          <p class="leaderboard-sub">Longest roguelike survivals on this device.</p>
+        </div>
+        <ol id="soloLeaderboard" class="leaderboard-list"></ol>
       </section>
     </main>
   </div>

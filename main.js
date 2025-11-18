@@ -2,6 +2,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const hudEl = document.getElementById('hud');
 const queueOverlay = document.getElementById('queueOverlay');
+const queueMessage = document.getElementById('queueMessage');
 const choiceOverlay = document.getElementById('choiceOverlay');
 const choiceOptionsEl = document.getElementById('choiceOptions');
 const choiceTitle = document.getElementById('choiceTitle');
@@ -20,6 +21,8 @@ const logoutBtn = document.getElementById('logoutBtn');
 const nicknameInput = document.getElementById('nickname');
 const passwordInput = document.getElementById('password');
 const accountStatsEl = document.getElementById('accountStats');
+const soloLeaderboardEl = document.getElementById('soloLeaderboard');
+const unlockListEl = document.getElementById('unlockList');
 
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
@@ -36,15 +39,21 @@ const state = {
   lastTime: 0,
   warmup: 0,
   queueTimeout: null,
+  queueAIHandle: null,
+  queueTicker: null,
+  queueDeadline: 0,
   codexLayer: null,
   account: null,
   accounts: loadAccounts(),
   accountKey: null,
   aiResult: null,
+  recentUnlocks: [],
+  leaderboard: loadLeaderboard(),
 };
 
 const keys = new Set();
 const pointer = { x: WIDTH / 2, y: HEIGHT / 2 };
+const audio = createAudioSuite();
 
 const CHOICES = [
   {
@@ -135,7 +144,119 @@ const CHOICES = [
       run.danger += 0.25;
     },
   },
+  {
+    id: 'haloDrift',
+    name: 'Halo Drift',
+    description: 'Twin emitters orbit center and flick radial beads constantly.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'halo')) {
+        run.extraSpawners.push(createHaloSpawner());
+      }
+      run.danger += 0.35;
+    },
+  },
+  {
+    id: 'meteorRain',
+    name: 'Meteor Rain',
+    description: 'Heavy squares plummet from the sky with low warnings.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'meteor')) {
+        run.extraSpawners.push(createMeteorSpawner());
+      }
+      run.danger += 0.35;
+    },
+  },
+  {
+    id: 'fanQuills',
+    name: 'Fan Quills',
+    description: 'Edge cannons sweep in fans that spread across the arena.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'fan')) {
+        run.extraSpawners.push(createFanSpawner());
+      }
+      run.danger += 0.3;
+    },
+  },
+  {
+    id: 'blinkNeedles',
+    name: 'Blink Needles',
+    description: 'Teleporting needles mark the floor near you then lunge outward.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'blink')) {
+        run.extraSpawners.push(createBlinkSpawner());
+      }
+      run.danger += 0.28;
+    },
+  },
+  {
+    id: 'novaGarden',
+    name: 'Nova Garden',
+    description: 'Pods sprout, pulse, and detonate into wide rings of shards.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'nova')) {
+        run.extraSpawners.push(createNovaSpawner());
+      }
+      run.danger += 0.35;
+    },
+  },
+  {
+    id: 'seekerFlare',
+    name: 'Seeker Flares',
+    description: 'Slow orbs ignite and begin steering toward your current spot.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'seeker')) {
+        run.extraSpawners.push(createSeekerSpawner());
+      }
+      run.danger += 0.33;
+    },
+  },
+  {
+    id: 'ringCascade',
+    name: 'Ring Cascade',
+    description: 'Every few seconds three successive rings ripple outward.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'cascade')) {
+        run.extraSpawners.push(createCascadeSpawner());
+      }
+      run.danger += 0.4;
+    },
+  },
+  {
+    id: 'riftStrafe',
+    name: 'Rift Strafe',
+    description: 'Columns of bullets sweep horizontally or vertically at once.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'tunnel')) {
+        run.extraSpawners.push(createTunnelSpawner());
+      }
+      run.danger += 0.32;
+    },
+  },
+  {
+    id: 'emberFlurry',
+    name: 'Ember Flurry',
+    description: 'Showers of micro embers rain constantly from above.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'rain')) {
+        run.extraSpawners.push(createRainSpawner());
+      }
+      run.danger += 0.27;
+    },
+  },
+  {
+    id: 'spiralSnare',
+    name: 'Spiral Snare',
+    description: 'Spiral launchers continuously spin and fire paired bolts.',
+    apply: (run) => {
+      if (!run.extraSpawners.some((s) => s.id === 'spiral')) {
+        run.extraSpawners.push(createSpiralSpawner());
+      }
+      run.danger += 0.34;
+    },
+  },
 ];
+
+const CHOICE_LOOKUP = Object.fromEntries(CHOICES.map((choice) => [choice.id, choice]));
 
 function createPlayer() {
   return {
@@ -160,6 +281,7 @@ function createPlayer() {
     invuln: 0,
     lastDir: { x: 1, y: 0 },
     choiceHistory: [],
+    hurtTimer: 0,
   };
 }
 
@@ -186,7 +308,15 @@ function createRun(options = {}) {
     mode: options.mode || 'solo',
     label: options.label || 'player',
     aiDamageTimer: 1,
+    effects: [],
+    flash: 0,
+    rushTrailTimer: 0,
+    choicePool: snapshotChoicePool(),
   };
+}
+
+function snapshotChoicePool() {
+  return getUnlockedChoiceIds();
 }
 
 function createLaserSpawner() {
@@ -230,6 +360,336 @@ function createShardSpawner() {
   };
 }
 
+function createHaloSpawner() {
+  let angle = 0;
+  const spawner = {
+    id: 'halo',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      angle += dt * 1.2;
+      if (this.timer <= 0) {
+        this.timer = rand(1.8, 2.3);
+        const count = 12;
+        for (let i = 0; i < count; i++) {
+          const theta = angle + (Math.PI * 2 * i) / count;
+          run.bullets.push({
+            x: WIDTH / 2 + Math.cos(theta) * 24,
+            y: HEIGHT / 2 + Math.sin(theta) * 24,
+            vx: Math.cos(theta) * 140,
+            vy: Math.sin(theta) * 140,
+            radius: 5,
+            type: 'circle',
+            damage: 8,
+            color: '#9ef1ff',
+          });
+        }
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createMeteorSpawner() {
+  const spawner = {
+    id: 'meteor',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(2.4, 3.8);
+        run.bullets.push({
+          x: rand(30, WIDTH - 30),
+          y: -30,
+          vx: rand(-30, 30),
+          vy: rand(120, 180) * run.bulletSpeed,
+          size: rand(18, 28),
+          type: 'square',
+          damage: 18,
+          color: '#ff9c5b',
+        });
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createFanSpawner() {
+  const spawner = {
+    id: 'fan',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(2.2, 3.4);
+        const edge = randInt(0, 3);
+        const point = getEdgePoint(edge);
+        const baseAngle = edge === 0 ? Math.PI / 2 : edge === 1 ? Math.PI : edge === 2 ? -Math.PI / 2 : 0;
+        const count = 5;
+        for (let i = 0; i < count; i++) {
+          const offset = ((i - (count - 1) / 2) / (count - 1)) * (Math.PI / 4);
+          const angle = baseAngle + offset;
+          run.bullets.push({
+            x: point.x,
+            y: point.y,
+            vx: Math.cos(angle) * 180,
+            vy: Math.sin(angle) * 180,
+            radius: 4,
+            type: 'circle',
+            damage: 8,
+            color: '#f2b6ff',
+          });
+        }
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createBlinkSpawner() {
+  const spawner = {
+    id: 'blink',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(1.8, 2.8);
+        const spawnX = clamp(run.player.x + rand(-120, 120), 30, WIDTH - 30);
+        const spawnY = clamp(run.player.y + rand(-120, 120), 30, HEIGHT - 30);
+        const angle = Math.atan2(run.player.y - spawnY, run.player.x - spawnX);
+        const speed = 220;
+        run.bullets.push({
+          x: spawnX,
+          y: spawnY,
+          spawnX,
+          spawnY,
+          warning: 0.7,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius: 5,
+          type: 'circle',
+          damage: 12,
+          color: '#ffec8f',
+        });
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createNovaSpawner() {
+  const spawner = {
+    id: 'nova',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(3.8, 5.2);
+        run.hazards.push({
+          type: 'pod',
+          x: rand(80, WIDTH - 80),
+          y: rand(80, HEIGHT - 80),
+          timer: 1.4,
+          ttl: 1.4,
+          radius: 16,
+          damage: 10,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSeekerSpawner() {
+  const spawner = {
+    id: 'seeker',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(2.2, 3.2);
+        run.bullets.push({
+          x: rand(50, WIDTH - 50),
+          y: rand(50, HEIGHT - 50),
+          vx: rand(-30, 30),
+          vy: rand(-30, 30),
+          radius: 6,
+          type: 'circle',
+          damage: 10,
+          color: '#ff6fd8',
+          seek: 110,
+          maxSpeed: 190,
+        });
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createCascadeSpawner() {
+  const spawner = {
+    id: 'cascade',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(4, 5.5);
+        run.hazards.push({
+          type: 'cascade',
+          x: rand(60, WIDTH - 60),
+          y: rand(60, HEIGHT - 60),
+          waves: 3,
+          radius: 30,
+          delay: 0.35,
+          timer: 0.35,
+          damage: 8,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createTunnelSpawner() {
+  const spawner = {
+    id: 'tunnel',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(3, 4.4);
+        const horizontal = Math.random() < 0.5;
+        if (horizontal) {
+          const y = rand(50, HEIGHT - 50);
+          for (let x = 20; x < WIDTH; x += 60) {
+            run.bullets.push({
+              x,
+              y,
+              vx: 0,
+              vy: rand(90, 140) * (Math.random() < 0.5 ? 1 : -1),
+              radius: 4,
+              damage: 7,
+              type: 'circle',
+              color: '#7ff7ff',
+            });
+          }
+        } else {
+          const x = rand(50, WIDTH - 50);
+          for (let y = 20; y < HEIGHT; y += 60) {
+            run.bullets.push({
+              x,
+              y,
+              vx: rand(90, 140) * (Math.random() < 0.5 ? 1 : -1),
+              vy: 0,
+              radius: 4,
+              damage: 7,
+              type: 'circle',
+              color: '#7ff7ff',
+            });
+          }
+        }
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createRainSpawner() {
+  const spawner = {
+    id: 'rain',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = rand(1.2, 1.6);
+        const count = randInt(6, 10);
+        for (let i = 0; i < count; i++) {
+          run.bullets.push({
+            x: rand(20, WIDTH - 20),
+            y: -10,
+            vx: rand(-10, 10),
+            vy: rand(130, 200),
+            radius: 3,
+            type: 'circle',
+            damage: 5,
+            color: '#ffa4a4',
+          });
+        }
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSpiralSpawner() {
+  let angle = 0;
+  const spawner = {
+    id: 'spiral',
+    timer: 0,
+    tick(run, dt) {
+      this.timer -= dt;
+      angle += dt * 2.2;
+      if (this.timer <= 0) {
+        this.timer = 0.6;
+        const speed = 160;
+        const offsets = [0, Math.PI];
+        offsets.forEach((off) => {
+          const theta = angle + off;
+          run.bullets.push({
+            x: WIDTH / 2,
+            y: HEIGHT / 2,
+            vx: Math.cos(theta) * speed,
+            vy: Math.sin(theta) * speed,
+            radius: 4,
+            damage: 7,
+            type: 'circle',
+            color: '#c1a9ff',
+          });
+        });
+        audio.play('bullet');
+      }
+    },
+  };
+  return spawner;
+}
+
+function getEdgePoint(edge) {
+  switch (edge) {
+    case 0:
+      return { x: rand(0, WIDTH), y: -10 };
+    case 1:
+      return { x: WIDTH + 10, y: rand(0, HEIGHT) };
+    case 2:
+      return { x: rand(0, WIDTH), y: HEIGHT + 10 };
+    default:
+      return { x: -10, y: rand(0, HEIGHT) };
+  }
+}
+
+function spawnRing(run, x, y, count, speed, color, damage = 10) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count;
+    run.bullets.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 4,
+      type: 'circle',
+      damage,
+      color,
+    });
+  }
+  audio.play('bullet');
+}
+
 function startSolo() {
   resetOverlays();
   state.mode = 'solo';
@@ -238,37 +698,71 @@ function startSolo() {
   state.paused = false;
   state.awaitingChoice = false;
   state.warmup = 1.5;
+  state.recentUnlocks = [];
+  renderUnlockList();
+  audio.startMusic();
 }
 
 function enterQueue() {
   resetOverlays();
   state.mode = 'queue';
+  state.run = null;
+  state.opponentRun = null;
   queueOverlay.classList.remove('hidden');
-  if (state.queueTimeout) clearTimeout(state.queueTimeout);
-  state.queueTimeout = setTimeout(() => {
-    queueOverlay.classList.add('hidden');
-    startPvp();
-  }, 2000);
+  queueMessage.textContent = 'Matching players across the grid...';
+  clearQueueTimers();
+  const fallback = 8000;
+  state.queueDeadline = performance.now() + fallback;
+  state.queueTicker = setInterval(() => {
+    const remaining = Math.max(0, state.queueDeadline - performance.now());
+    queueMessage.textContent = `Matching players... AI backup in ${(remaining / 1000).toFixed(1)}s`;
+  }, 250);
+  state.queueAIHandle = setTimeout(() => {
+    queueMessage.textContent = 'No human rival arrived. Deploying adaptive AI...';
+    state.queueTimeout = setTimeout(() => startPvp({ ai: true }), 1200);
+  }, fallback);
+  hudEl.innerHTML = '<div>Searching for duelists...</div>';
 }
 
-function startPvp() {
+function startPvp({ ai = true } = {}) {
   resetOverlays();
+  clearQueueTimers();
+  queueOverlay.classList.add('hidden');
   state.mode = 'pvp';
   state.run = createRun({ mode: 'pvp', label: 'you', warmup: 3 });
-  state.opponentRun = createAIRun();
+  state.opponentRun = ai ? createAIRun() : null;
   state.paused = false;
   state.awaitingChoice = false;
+  state.recentUnlocks = [];
+  renderUnlockList();
+  audio.startMusic();
+}
+
+function clearQueueTimers() {
+  if (state.queueTimeout) {
+    clearTimeout(state.queueTimeout);
+    state.queueTimeout = null;
+  }
+  if (state.queueAIHandle) {
+    clearTimeout(state.queueAIHandle);
+    state.queueAIHandle = null;
+  }
+  if (state.queueTicker) {
+    clearInterval(state.queueTicker);
+    state.queueTicker = null;
+  }
 }
 
 function createAIRun() {
   const run = createRun({ mode: 'pvp', label: 'opponent' });
   run.player.color = '#ffa4a4';
-  run.skill = rand(0.85, 1.2);
+  run.skill = rand(1.2, 1.7);
   run.aiDamageTimer = 1;
   return run;
 }
 
 function resetOverlays() {
+  clearQueueTimers();
   queueOverlay.classList.add('hidden');
   choiceOverlay.classList.add('hidden');
   gameOverEl.classList.add('hidden');
@@ -281,6 +775,10 @@ function rand(min, max) {
 
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function update(delta) {
@@ -319,9 +817,16 @@ function updateRun(run, delta) {
 
   run.time += delta;
   run.nextChoice -= delta;
-  handleInput(run.player, delta);
+  handleInput(run, delta);
   updateBullets(run, delta);
   updateHazards(run, delta);
+  updateEffects(run, delta);
+  if (run.flash > 0) {
+    run.flash = Math.max(0, run.flash - delta);
+  }
+  if (run.player.hurtTimer > 0) {
+    run.player.hurtTimer = Math.max(0, run.player.hurtTimer - delta);
+  }
 
   run.spawnTimer -= delta * run.spawnRate;
   if (run.spawnTimer <= 0) {
@@ -337,7 +842,8 @@ function updateRun(run, delta) {
   }
 }
 
-function handleInput(player, delta) {
+function handleInput(run, delta) {
+  const player = run.player;
   const dir = { x: 0, y: 0 };
   if (keys.has('KeyA')) dir.x -= 1;
   if (keys.has('KeyD')) dir.x += 1;
@@ -351,13 +857,26 @@ function handleInput(player, delta) {
     player.lastDir = { ...dir };
   }
 
-  const rushing = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const rushing = (keys.has('ShiftLeft') || keys.has('ShiftRight')) && len > 0;
   let speed = player.speed * player.speedMultiplier;
   let spending = false;
-  if (rushing && player.stamina > 0 && len > 0) {
+  if (rushing && player.stamina > 0) {
     speed *= player.rushMultiplier;
     player.stamina = Math.max(0, player.stamina - player.rushDrain * delta);
     spending = true;
+    run.rushTrailTimer -= delta;
+    if (run.rushTrailTimer <= 0) {
+      addEffect(run, {
+        type: 'rush',
+        x: player.x,
+        y: player.y,
+        ttl: 0.3,
+        radius: player.radius + 12,
+      });
+      run.rushTrailTimer = 0.05;
+    }
+  } else {
+    run.rushTrailTimer = Math.max(0, run.rushTrailTimer - delta);
   }
 
   player.x += dir.x * speed * delta;
@@ -389,6 +908,8 @@ function tryDash() {
   if (!dir || (dir.x === 0 && dir.y === 0)) return;
   const len = Math.hypot(dir.x, dir.y) || 1;
   const norm = { x: dir.x / len, y: dir.y / len };
+  const startX = player.x;
+  const startY = player.y;
   player.x += norm.x * player.dashDistance;
   player.y += norm.y * player.dashDistance;
   player.x = Math.max(player.radius, Math.min(WIDTH - player.radius, player.x));
@@ -397,10 +918,20 @@ function tryDash() {
   player.stamina = Math.max(0, player.stamina - player.dashCost);
   player.invuln = 0.3;
   player.staminaDelay = 1.4;
+  addEffect(state.run, {
+    type: 'dash',
+    sx: startX,
+    sy: startY,
+    ex: player.x,
+    ey: player.y,
+    ttl: 0.35,
+  });
+  audio.play('dash');
 }
 
 document.addEventListener('keydown', (event) => {
   if (event.repeat) return;
+  audio.resume();
   keys.add(event.code);
   if (event.code === 'Space') {
     event.preventDefault();
@@ -465,6 +996,7 @@ function spawnBullet(run) {
 
   run.spawnCount += 1;
   run.bullets.push(bullet);
+  audio.play('bullet');
 
   if (run.mirrorBloom && run.spawnCount % 4 === 0) {
     run.bullets.push({ ...bullet, x: bullet.x + 10, y: bullet.y + 10 });
@@ -516,6 +1048,20 @@ function spawnShardBurst(run) {
       color: '#f55353',
     });
   }
+  audio.play('bullet');
+}
+
+function addEffect(run, effect) {
+  if (!run || !run.effects) return;
+  run.effects.push({ ...effect, life: effect.ttl });
+}
+
+function updateEffects(run, delta) {
+  if (!run.effects) return;
+  run.effects = run.effects.filter((effect) => {
+    effect.life -= delta;
+    return effect.life > 0;
+  });
 }
 
 function updateBullets(run, delta) {
@@ -536,6 +1082,19 @@ function updateBullets(run, delta) {
       bullet.vx += (dx / 800) * delta * 60;
       bullet.vy += (dy / 800) * delta * 60;
     }
+    if (bullet.seek) {
+      const dx = player.x - bullet.x;
+      const dy = player.y - bullet.y;
+      const len = Math.hypot(dx, dy) || 1;
+      bullet.vx += ((dx / len) * bullet.seek * delta) / 10;
+      bullet.vy += ((dy / len) * bullet.seek * delta) / 10;
+      const limit = bullet.maxSpeed || 200;
+      const speed = Math.hypot(bullet.vx, bullet.vy);
+      if (speed > limit) {
+        bullet.vx = (bullet.vx / speed) * limit;
+        bullet.vy = (bullet.vy / speed) * limit;
+      }
+    }
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
     if (
@@ -551,7 +1110,7 @@ function updateBullets(run, delta) {
     if (bullet.type === 'circle') {
       const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
       if (dist < bullet.radius + player.radius) {
-        applyDamage(player, bullet.damage);
+        applyDamage(run, player, bullet.damage);
         run.bullets.splice(i, 1);
       }
     } else if (bullet.type === 'square') {
@@ -559,7 +1118,7 @@ function updateBullets(run, delta) {
         Math.abs(bullet.x - player.x) < bullet.size / 2 + player.radius &&
         Math.abs(bullet.y - player.y) < bullet.size / 2 + player.radius
       ) {
-        applyDamage(player, bullet.damage);
+        applyDamage(run, player, bullet.damage);
         run.bullets.splice(i, 1);
       }
     }
@@ -582,11 +1141,11 @@ function updateHazards(run, delta) {
         if (player.invuln <= 0) {
           if (hazard.horizontal) {
             if (Math.abs(player.y - hazard.offset) < hazard.width) {
-              applyDamage(player, hazard.damage);
+              applyDamage(run, player, hazard.damage);
             }
           } else {
             if (Math.abs(player.x - hazard.offset) < hazard.width) {
-              applyDamage(player, hazard.damage);
+              applyDamage(run, player, hazard.damage);
             }
           }
         }
@@ -605,19 +1164,49 @@ function updateHazards(run, delta) {
           Math.abs(player.x - hazard.x) < hazard.size / 2 &&
           Math.abs(player.y - hazard.y) < hazard.size / 2
         ) {
-          applyDamage(player, hazard.damage);
+          applyDamage(run, player, hazard.damage);
         }
       }
       hazard.fade = Math.max(0, (hazard.fade || 0) - delta);
       if (!hazard.active && hazard.fade <= 0 && hazard.timer > hazard.blink) {
         run.hazards.splice(i, 1);
       }
+    } else if (hazard.type === 'pod') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        spawnRing(run, hazard.x, hazard.y, 14, 160, '#ff7b7b', hazard.damage);
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'cascade') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        hazard.timer = hazard.delay;
+        hazard.waves -= 1;
+        const radius = hazard.radius * (4 - hazard.waves);
+        spawnRing(run, hazard.x, hazard.y, 18, 90 + radius * 0.5, '#ffd36f', hazard.damage);
+        if (hazard.waves <= 0) {
+          run.hazards.splice(i, 1);
+        }
+      }
     }
   }
 }
 
-function applyDamage(player, dmg) {
+function applyDamage(run, player, dmg) {
   player.hp = Math.max(0, player.hp - dmg);
+  if (run === state.run) {
+    player.hurtTimer = 0.4;
+    player.invuln = Math.max(player.invuln, 0.2);
+    run.flash = 0.25;
+    addEffect(run, {
+      type: 'hurt',
+      x: player.x,
+      y: player.y,
+      ttl: 0.35,
+      radius: 30,
+    });
+    audio.play('hurt');
+  }
 }
 
 function updateAIRun(run, delta) {
@@ -631,23 +1220,25 @@ function updateAIRun(run, delta) {
     const dodge = run.skill;
     const chance = Math.random();
     if (chance > dodge / (dodge + intensity)) {
-      applyDamage(run.player, rand(6, 14));
+      applyDamage(run, run.player, rand(6, 14));
     }
   }
 }
 
-function applyRandomChoice(run, unlock = false) {
-  const choice = CHOICES[randInt(0, CHOICES.length - 1)];
-  applyChoice(choice, run, unlock);
+function applyRandomChoice(run) {
+  const pool = getChoicePool(run);
+  const choice = pool[randInt(0, pool.length - 1)] || CHOICES[0];
+  applyChoice(choice, run);
 }
 
 function presentChoices(run, opponentChoice = false) {
   state.paused = !opponentChoice;
   state.awaitingChoice = !opponentChoice;
   if (opponentChoice) return;
-  const options = getChoiceOptions();
+  const options = getChoiceOptions(run);
   choiceOverlay.classList.remove('hidden');
   canvas.classList.add('blur');
+  audio.play('choice');
   choiceOptionsEl.innerHTML = '';
   choiceTitle.textContent = state.mode === 'pvp' ? 'Curse your opponent' : 'Choose your next affliction';
   choiceSubtitle.textContent =
@@ -683,39 +1274,41 @@ function presentChoices(run, opponentChoice = false) {
     choiceOverlay.classList.add('hidden');
     canvas.classList.remove('blur');
     const target = state.mode === 'pvp' ? state.opponentRun : run;
-    applyChoice(choice, target, target === state.run);
+    applyChoice(choice, target);
     if (state.mode === 'pvp') {
-      applyRandomChoice(state.run, true);
+      applyRandomChoice(state.run);
     }
     state.paused = false;
     state.awaitingChoice = false;
+    audio.play('choice');
   }
 }
 
-function applyChoice(choice, run, shouldUnlock = false) {
+function applyChoice(choice, run) {
   choice.apply(run);
   run.player.choiceHistory.push(choice.id);
-  if (shouldUnlock) {
-    unlockChoice(choice.id);
-  }
 }
 
-function getChoiceOptions() {
+function getChoiceOptions(run) {
+  const pool = getChoicePool(run);
+  const total = Math.min(3, pool.length);
   const options = new Set();
-  while (options.size < 3) {
-    options.add(CHOICES[randInt(0, CHOICES.length - 1)]);
+  while (options.size < total && pool.length) {
+    options.add(pool[randInt(0, pool.length - 1)]);
+    if (pool.length <= options.size) break;
+  }
+  if (!options.size) {
+    return CHOICES.slice(0, 3);
   }
   return [...options];
 }
 
-function unlockChoice(id) {
-  if (!state.account) return;
-  const data = state.accounts[state.accountKey];
-  if (!data.unlockedChoices.includes(id)) {
-    data.unlockedChoices.push(id);
-    saveAccounts(state.accounts);
-    renderAccountStats();
+function getChoicePool(run) {
+  if (!run.choicePool || !run.choicePool.length) {
+    run.choicePool = snapshotChoicePool();
   }
+  const pool = run.choicePool.map((id) => CHOICE_LOOKUP[id]).filter(Boolean);
+  return pool.length ? pool : CHOICES;
 }
 
 function draw() {
@@ -740,8 +1333,36 @@ function drawBackground() {
   }
 }
 
+function drawEffects(run) {
+  if (!run.effects) return;
+  run.effects.forEach((effect) => {
+    const pct = Math.max(0, effect.life / effect.ttl);
+    if (effect.type === 'rush') {
+      ctx.strokeStyle = `rgba(127,247,255,${pct * 0.5})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, (effect.radius || 12) * (1 - pct) + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (effect.type === 'dash') {
+      ctx.strokeStyle = `rgba(255,255,255,${pct * 0.6})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(effect.sx, effect.sy);
+      ctx.lineTo(effect.ex, effect.ey);
+      ctx.stroke();
+    } else if (effect.type === 'hurt') {
+      ctx.strokeStyle = `rgba(255,80,80,${pct})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius * (1 - pct) + 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+}
+
 function drawRun(run) {
   const player = run.player;
+  drawEffects(run);
 
   run.bullets.forEach((bullet) => {
     if (bullet.warning > 0) {
@@ -788,13 +1409,30 @@ function drawRun(run) {
         hazard.size,
         hazard.size,
       );
+    } else if (hazard.type === 'pod') {
+      const pct = hazard.timer / hazard.ttl;
+      ctx.strokeStyle = `rgba(255,200,140,${pct})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, hazard.radius + (1 - pct) * 20, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (hazard.type === 'cascade') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
+      ctx.stroke();
     }
   });
 
-  ctx.fillStyle = player.color;
+  ctx.fillStyle = player.hurtTimer > 0 ? '#ff9292' : player.color;
   ctx.beginPath();
   ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
   ctx.fill();
+  if (run.flash > 0) {
+    ctx.fillStyle = `rgba(255,80,80,${run.flash * 0.4})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
 }
 
 function drawHUD() {
@@ -806,28 +1444,45 @@ function drawHUD() {
   const player = run.player;
   const staminaPct = player.stamina / player.staminaMax;
   const hpPct = player.hp / player.hpMax;
-  const lines = [
-    `Mode: ${state.mode === 'pvp' ? '1v1 Duel' : 'Solo Roguelike'}`,
-    `Time survived: ${run.time.toFixed(1)}s`,
-    `HP ${player.hp.toFixed(0)} / ${player.hpMax}`,
-    progressBar(hpPct),
-    `ST ${player.stamina.toFixed(0)} / ${player.staminaMax}`,
-    progressBar(staminaPct),
-    `Next choice in ${Math.max(0, run.nextChoice).toFixed(1)}s`,
-  ];
+  const chips = player.choiceHistory.length
+    ? player.choiceHistory
+        .slice(-6)
+        .map((id) => `<span class="choice-chip">${CHOICE_LOOKUP[id]?.name || id}</span>`)
+        .join('')
+    : '<span class="choice-chip empty">No curses yet</span>';
+  let opponentBlock = '';
   if (state.mode === 'pvp' && state.opponentRun) {
-    lines.push(
-      `Opponent HP: ${state.opponentRun.player.hp.toFixed(0)}`,
-      `Opponent curses: ${state.opponentRun.player.choiceHistory.length}`,
-    );
+    const foe = state.opponentRun.player;
+    const foePct = Math.max(0, Math.min(1, foe.hp / foe.hpMax || 0));
+    opponentBlock = `
+      <div class="meter">
+        <span class="meter-label">OPP</span>
+        <div class="meter-track"><span style="width:${foePct * 100}%"></span></div>
+        <span>${foe.hp.toFixed(0)}</span>
+      </div>
+      <div>Opponent curses: ${state.opponentRun.player.choiceHistory.length}</div>
+    `;
   }
-  hudEl.innerHTML = lines
-    .map((line) => (line.startsWith('<div') ? line : `<div>${line}</div>`))
-    .join('');
+  hudEl.innerHTML = `
+    <div>Mode: ${state.mode === 'pvp' ? '1v1 Duel' : 'Solo Roguelike'}</div>
+    <div>Time survived: ${run.time.toFixed(1)}s</div>
+    ${meterMarkup('HP', hpPct, `${player.hp.toFixed(0)} / ${player.hpMax}`, 'hp')}
+    ${meterMarkup('ST', staminaPct, `${player.stamina.toFixed(0)} / ${player.staminaMax}`)}
+    <div>Next choice in ${Math.max(0, run.nextChoice).toFixed(1)}s</div>
+    <div class="choice-chips">${chips}</div>
+    ${opponentBlock}
+  `;
 }
 
-function progressBar(value) {
-  return `<div class="progress"><span style="width:${Math.max(0, Math.min(1, value)) * 100}%"></span></div>`;
+function meterMarkup(label, value, text, extraClass = '') {
+  const pct = Math.max(0, Math.min(1, value || 0)) * 100;
+  return `
+    <div class="meter ${extraClass}">
+      <span class="meter-label">${label}</span>
+      <div class="meter-track"><span style="width:${pct}%"></span></div>
+      <span>${text}</span>
+    </div>
+  `;
 }
 
 function endGame(title, result) {
@@ -840,6 +1495,11 @@ function endGame(title, result) {
     gameOverDetail.textContent = `You lasted ${time}s · Opponent lasted ${opponentTime}s`;
   } else {
     gameOverDetail.textContent = `You survived ${time}s. Dare to try again?`;
+  }
+  state.recentUnlocks = awardUnlocks(state.run, result);
+  renderUnlockList();
+  if (state.mode === 'solo') {
+    updateLeaderboard(state.run);
   }
   gameOverEl.classList.remove('hidden');
   updateAccountAfterMatch(result);
@@ -871,8 +1531,11 @@ mainMenuBtn.addEventListener('click', () => {
   state.mode = 'menu';
   state.run = null;
   state.opponentRun = null;
+  state.recentUnlocks = [];
   resetOverlays();
   hudEl.innerHTML = '<p>Select a mode to begin.</p>';
+  renderUnlockList();
+  audio.stopMusic();
 });
 
 soloBtn.addEventListener('click', startSolo);
@@ -915,7 +1578,7 @@ loginBtn.addEventListener('click', () => {
       wins: 0,
       losses: 0,
       bestSolo: 0,
-      unlockedChoices: [],
+      unlockedChoices: getInitialUnlockedChoiceIds(),
     };
   }
   const record = state.accounts[key];
@@ -923,21 +1586,25 @@ loginBtn.addEventListener('click', () => {
     alert('Password mismatch.');
     return;
   }
+  record.unlockedChoices = sanitizeUnlocked(record.unlockedChoices);
   state.account = record;
   state.accountKey = key;
   saveAccounts(state.accounts);
   renderAccountStats();
+  renderUnlockList();
 });
 
 logoutBtn.addEventListener('click', () => {
   state.account = null;
   state.accountKey = null;
   accountStatsEl.innerHTML = '<p>Signed out.</p>';
+  renderUnlockList();
 });
 
 function renderAccountStats() {
   if (!state.account) {
-    accountStatsEl.innerHTML = '<p>Playing as guest.</p>';
+    accountStatsEl.innerHTML = '<p>Playing as guest. Sign in to save unlocks.</p>';
+    renderUnlockList();
     return;
   }
   const data = state.accounts[state.accountKey];
@@ -950,6 +1617,71 @@ function renderAccountStats() {
     <div>Best Solo: ${data.bestSolo.toFixed(1)}s</div>
     <div>Unlocked choices: ${data.unlockedChoices.length}/${CHOICES.length}</div>
   `;
+  renderUnlockList();
+}
+
+function renderUnlockList() {
+  if (!unlockListEl) return;
+  if (!state.account) {
+    unlockListEl.innerHTML = '<span>Sign in to unlock more curses.</span>';
+    return;
+  }
+  if (!state.recentUnlocks.length) {
+    unlockListEl.innerHTML = '<span>No new curses earned this run.</span>';
+    return;
+  }
+  unlockListEl.innerHTML = state.recentUnlocks.map((name) => `<span>${name}</span>`).join('');
+}
+
+function awardUnlocks(run, result) {
+  if (!state.account || !state.accountKey) return [];
+  const data = state.accounts[state.accountKey];
+  data.unlockedChoices = sanitizeUnlocked(data.unlockedChoices);
+  const locked = CHOICES.map((choice) => choice.id).filter(
+    (id) => !data.unlockedChoices.includes(id),
+  );
+  if (!locked.length) return [];
+  let unlockCount = Math.floor(run.time / 40);
+  if (run.mode === 'solo') {
+    unlockCount += Math.floor(run.time / 70);
+  }
+  if (run.mode === 'pvp' && result === 'win') {
+    unlockCount += 1;
+  }
+  unlockCount = Math.min(locked.length, unlockCount);
+  if (unlockCount <= 0) return [];
+  const awarded = locked.slice(0, unlockCount);
+  data.unlockedChoices.push(...awarded);
+  saveAccounts(state.accounts);
+  renderAccountStats();
+  return awarded.map((id) => CHOICE_LOOKUP[id]?.name || id);
+}
+
+function getUnlockedChoiceIds() {
+  if (state.account && state.accountKey && state.accounts[state.accountKey]) {
+    const data = state.accounts[state.accountKey];
+    data.unlockedChoices = sanitizeUnlocked(data.unlockedChoices);
+    return [...data.unlockedChoices];
+  }
+  return getInitialUnlockedChoiceIds();
+}
+
+function getInitialUnlockedChoiceIds() {
+  return CHOICES.slice(0, 10).map((choice) => choice.id);
+}
+
+function sanitizeUnlocked(list = []) {
+  const allowed = CHOICES.map((choice) => choice.id);
+  const set = new Set();
+  list.forEach((id) => {
+    if (allowed.includes(id)) {
+      set.add(id);
+    }
+  });
+  if (!set.size) {
+    getInitialUnlockedChoiceIds().forEach((id) => set.add(id));
+  }
+  return [...set];
 }
 
 function simpleHash(str) {
@@ -974,6 +1706,164 @@ function saveAccounts(obj) {
   localStorage.setItem('dot-matrix-accounts', JSON.stringify(obj));
 }
 
+function createAudioSuite() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    return {
+      play() {},
+      startMusic() {},
+      stopMusic() {},
+      resume() {},
+      bindButtons() {},
+    };
+  }
+  const ctx = new AudioCtx();
+  const master = ctx.createGain();
+  master.gain.value = 0.45;
+  master.connect(ctx.destination);
+  const sfxGain = ctx.createGain();
+  sfxGain.gain.value = 0.7;
+  sfxGain.connect(master);
+  const musicGain = ctx.createGain();
+  musicGain.gain.value = 0.15;
+  musicGain.connect(master);
+  let musicInterval = null;
+  let lastBullet = 0;
+
+  function resume() {
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+  }
+
+  function blip(freq, duration, gainValue, type = 'sine', target = sfxGain) {
+    resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    gain.connect(target);
+    gain.gain.value = gainValue;
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  }
+
+  function noise(duration, gainValue) {
+    resume();
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(sfxGain);
+    gain.gain.value = gainValue;
+    source.start();
+    source.stop(ctx.currentTime + duration);
+  }
+
+  function play(name) {
+    switch (name) {
+      case 'dash':
+        blip(420, 0.15, 0.25, 'sawtooth');
+        break;
+      case 'choice':
+        blip(280, 0.18, 0.2, 'triangle');
+        break;
+      case 'bullet': {
+        const now = ctx.currentTime;
+        if (now - lastBullet > 0.08) {
+          lastBullet = now;
+          noise(0.08, 0.18);
+        }
+        break;
+      }
+      case 'hurt':
+        noise(0.2, 0.3);
+        break;
+      case 'ui':
+        blip(600, 0.08, 0.15, 'triangle');
+        break;
+      default:
+        break;
+    }
+  }
+
+  function startMusic() {
+    resume();
+    if (musicInterval) return;
+    const notes = [220, 0, 330, 0, 392, 0, 294, 0];
+    let index = 0;
+    musicInterval = setInterval(() => {
+      if (ctx.state === 'suspended') return;
+      const note = notes[index % notes.length];
+      if (note) {
+        blip(note, 0.3, 0.1, 'triangle', musicGain);
+      }
+      index += 1;
+    }, 450);
+  }
+
+  function stopMusic() {
+    if (musicInterval) {
+      clearInterval(musicInterval);
+      musicInterval = null;
+    }
+  }
+
+  function bindButtons() {
+    document.addEventListener('click', (event) => {
+      if (event.target.closest && event.target.closest('button')) {
+        play('ui');
+      }
+    });
+  }
+
+  return { play, startMusic, stopMusic, resume, bindButtons };
+}
+
+function loadLeaderboard() {
+  try {
+    const raw = localStorage.getItem('dot-matrix-leaderboard');
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveLeaderboard(list) {
+  localStorage.setItem('dot-matrix-leaderboard', JSON.stringify(list));
+}
+
+function updateLeaderboard(run) {
+  const entry = {
+    name: state.account ? state.account.nickname : 'Guest',
+    time: Number(run.time.toFixed(1)),
+    date: new Date().toISOString(),
+  };
+  state.leaderboard.push(entry);
+  state.leaderboard.sort((a, b) => b.time - a.time);
+  state.leaderboard = state.leaderboard.slice(0, 10);
+  saveLeaderboard(state.leaderboard);
+  renderLeaderboard();
+}
+
+function renderLeaderboard() {
+  if (!soloLeaderboardEl) return;
+  if (!state.leaderboard.length) {
+    soloLeaderboardEl.innerHTML = '<li class="empty">No runs recorded yet.</li>';
+    return;
+  }
+  soloLeaderboardEl.innerHTML = state.leaderboard
+    .map((entry) => `<li><span>${entry.name}</span><span>${entry.time.toFixed(1)}s</span></li>`)
+    .join('');
+}
+
 function gameLoop(timestamp) {
   if (!state.lastTime) state.lastTime = timestamp;
   const delta = Math.min(0.033, (timestamp - state.lastTime) / 1000);
@@ -986,3 +1876,7 @@ function gameLoop(timestamp) {
 requestAnimationFrame(gameLoop);
 
 renderAccountStats();
+renderUnlockList();
+renderLeaderboard();
+audio.bindButtons();
+window.addEventListener('pointerdown', () => audio.resume());

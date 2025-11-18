@@ -137,22 +137,64 @@ canvas {
   top: 12px;
   left: 12px;
   font-family: 'JetBrains Mono', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: rgba(4, 6, 12, 0.82);
+  border-radius: 16px;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meter {
   display: grid;
-  gap: 4px;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.85rem;
 }
 
-.progress {
+.meter-label {
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.meter-track {
   width: 180px;
-  height: 8px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.1);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
+  position: relative;
 }
 
-.progress > span {
-  display: block;
-  height: 100%;
+.meter-track span {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(90deg, var(--dot), var(--good));
+}
+
+.meter.hp .meter-track span {
+  background: linear-gradient(90deg, #ff7b7b, #ffed7f);
+}
+
+.choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.choice-chip {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.choice-chip.empty {
+  opacity: 0.6;
+  font-style: italic;
 }
 
 .queue-overlay,
@@ -247,6 +289,72 @@ canvas {
 .gameover-buttons {
   display: flex;
   gap: 0.5rem;
+}
+
+.unlock-readout {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 0.8rem 1rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.unlock-readout h3 {
+  margin-top: 0;
+}
+
+#unlockList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  justify-content: center;
+}
+
+#unlockList span {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.leaderboard-panel {
+  margin-top: 1rem;
+  background: rgba(8, 10, 18, 0.65);
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard-sub {
+  margin: 0;
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.leaderboard-list {
+  list-style: decimal-leading-zero;
+  margin: 0.6rem 0 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.leaderboard-list li {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.leaderboard-list li.empty {
+  justify-content: center;
+  font-style: italic;
+  opacity: 0.6;
 }
 
 .codex {
