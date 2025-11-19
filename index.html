@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Matrivade · Bullet Evasion Arena</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="title">
+      <div>
+        <h1>Matrivade</h1>
+        <p class="tagline">WASD 이동 · Shift 돌진 · Space 방패 대시 · 탄막 속에서 끝까지 살아남으세요.</p>
+      </div>
+      <div class="account-panel">
+        <div class="account-form">
+          <label>닉네임
+            <input id="nickname" type="text" placeholder="닉네임 입력" />
+          </label>
+          <label>비밀번호
+            <input id="password" type="password" placeholder="비밀번호 입력" />
+          </label>
+          <div class="account-buttons">
+            <button id="loginBtn">로그인</button>
+            <button id="logoutBtn" class="ghost">로그아웃</button>
+          </div>
+          <small class="info">계정은 이 브라우저에만 저장되며, 해금된 저주·레벨·승률을 기록합니다.</small>
+        </div>
+        <div class="account-stats" id="accountStats"></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="menu">
+        <button class="mode" id="soloBtn">싱글 로그라이크</button>
+        <button class="mode" id="pvpBtn">1대1 대전</button>
+        <button class="mode ghost" id="codexBtn">저주 도감</button>
+      </section>
+      <section class="game-wrapper">
+        <canvas id="gameCanvas" width="900" height="600"></canvas>
+        <div class="hud" id="hud"></div>
+        <div class="queue-overlay hidden" id="queueOverlay">
+          <p id="queueMessage">다른 도전자와 연결 중...</p>
+          <div class="dot-loader"></div>
+        </div>
+        <div class="choice-overlay hidden" id="choiceOverlay">
+          <div class="choice-header">
+            <h2 id="choiceTitle">적용할 저주를 고르세요</h2>
+            <p id="choiceSubtitle">선택하는 동안 시간은 멈춥니다. 시간을 넘기면 무작위 저주가 적용됩니다.</p>
+            <div class="choice-timer" id="choiceTimer"></div>
+          </div>
+          <div class="choice-options" id="choiceOptions"></div>
+        </div>
+        <div class="gameover-overlay hidden" id="gameOver">
+          <h2 id="gameOverTitle">라운드 종료</h2>
+          <p id="gameOverDetail"></p>
+          <div class="unlock-readout">
+            <h3>이번 라운드 해금</h3>
+            <div id="unlockList"></div>
+          </div>
+          <div class="gameover-buttons">
+            <button id="rematchBtn">다시 대전</button>
+            <button id="mainMenuBtn" class="ghost">메인 메뉴</button>
+          </div>
+        </div>
+      </section>
+      <section class="leaderboard-panel">
+        <div>
+          <h2>싱글 생존 기록</h2>
+          <p class="leaderboard-sub">이 기기에서 가장 오래 버틴 기록입니다.</p>
+        </div>
+        <ol id="soloLeaderboard" class="leaderboard-list"></ol>
+      </section>
+    </main>
+  </div>
+  <template id="codexTemplate">
+    <div class="codex">
+      <h2>해금된 저주</h2>
+      <div class="codex-grid" id="codexGrid"></div>
+      <button class="ghost" id="closeCodex">닫기</button>
+    </div>
+  </template>
+  <script src="main.js" type="module"></script>
+</body>
+</html>
