@@ -26,14 +26,16 @@ const unlockListEl = document.getElementById('unlockList');
 
 const WIDTH = canvas.width;
 const HEIGHT = canvas.height;
-const BASE_SPAWN = 1.75;
-const BASE_SPAWN_ACCEL = 0.006;
+const BASE_SPAWN = 2.45;
+const BASE_SPAWN_ACCEL = 0.0035;
 const CHOICE_INTERVAL = 18;
 const CHOICE_DURATION = 9;
 const HEAL_INTERVAL = 60;
 const HEAL_AMOUNT = 12;
 const ARMOR_DURATION = 1;
 const AI_FALLBACK_MS = 30000;
+const BASE_UNLOCK_COUNT = 10;
+const BASE_BULLET_CAP = 120;
 
 const state = {
   mode: 'menu',
@@ -374,6 +376,318 @@ const CHOICES = [
   },
 ];
 
+const waveCurseConfigs = [
+  {
+    id: 'zigzagVeil',
+    name: 'Zigzag Veil',
+    description: 'Thin lances zigzag from the arena edges. Stacks add lanes and sharper turns.',
+    danger: { base: 0.27, scale: 0.04 },
+    options: {
+      axis: 'horizontal',
+      path: 'zigzag',
+      lanes: 2,
+      color: '#f5ff7a',
+      shape: 'triangle',
+      zigzag: 95,
+      cooldown: [2.4, 3.2],
+    },
+  },
+  {
+    id: 'sineTangle',
+    name: 'Sine Tangle',
+    description: 'Wavy ribbons slither from top and bottom. Stacks widen their sway.',
+    danger: { base: 0.27, scale: 0.04 },
+    options: {
+      axis: 'vertical',
+      path: 'sine',
+      lanes: 2,
+      amplitude: 60,
+      color: '#9bd3ff',
+      shape: 'diamond',
+      cooldown: [2.6, 3.4],
+    },
+  },
+  {
+    id: 'cosmicRipple',
+    name: 'Cosmic Ripple',
+    description: 'Slow aurora orbs surf in sinusoidal paths from the sides.',
+    danger: { base: 0.26, scale: 0.04 },
+    options: {
+      axis: 'horizontal',
+      path: 'sine',
+      lanes: 1,
+      amplitude: 80,
+      speed: 120,
+      color: '#d9b8ff',
+      shape: 'ring',
+      cooldown: [3, 4],
+    },
+  },
+  {
+    id: 'pincerDrift',
+    name: 'Pincer Drift',
+    description: 'Vertical zigzag drills descend in mirrored pairs. Stacks shrink their gaps.',
+    danger: { base: 0.3, scale: 0.04 },
+    options: {
+      axis: 'vertical',
+      path: 'zigzag',
+      lanes: 3,
+      zigzag: 110,
+      color: '#ffbaba',
+      shape: 'triangle',
+      cooldown: [2.8, 3.6],
+    },
+  },
+  {
+    id: 'spectrumRift',
+    name: 'Spectrum Rift',
+    description: 'Hex prisms surf sideways in layered s-curves.',
+    danger: { base: 0.28, scale: 0.05 },
+    options: {
+      axis: 'horizontal',
+      path: 'sine',
+      lanes: 3,
+      amplitude: 45,
+      color: '#a7ffe7',
+      shape: 'hex',
+      speed: 140,
+      cooldown: [2.2, 3],
+    },
+  },
+  {
+    id: 'zigzagTango',
+    name: 'Zigzag Tango',
+    description: 'Opposing zigzag dancers drop from the sky and floor.',
+    danger: { base: 0.29, scale: 0.05 },
+    options: {
+      axis: 'vertical',
+      path: 'zigzag',
+      lanes: 2,
+      zigzag: 85,
+      color: '#ffd4a3',
+      shape: 'diamond',
+      cooldown: [2.1, 2.8],
+    },
+  },
+];
+
+const retreatCurseConfigs = [
+  {
+    id: 'retreatSaw',
+    name: 'Retreat Saw',
+    description: 'Starbursts rush forward, stall, then reverse. Stacks make their armor runs longer.',
+    danger: { base: 0.28, scale: 0.05 },
+    options: {
+      color: '#ffa17a',
+      shape: 'diamond',
+      pause: 0.3,
+      advance: 0.55,
+      speed: 190,
+    },
+  },
+  {
+    id: 'echoRetreat',
+    name: 'Echo Retreat',
+    description: 'Glowing rings blink in, freeze time briefly, then recoil faster than they arrived.',
+    danger: { base: 0.27, scale: 0.05 },
+    options: {
+      color: '#9de3ff',
+      shape: 'ring',
+      pause: 0.45,
+      advance: 0.65,
+      speed: 170,
+    },
+  },
+];
+
+const lockerCurseConfigs = [
+  {
+    id: 'lockerLockdown',
+    name: 'Locker Lockdown',
+    description: 'Massive lockers drop with warnings before bursting keys in all directions.',
+    danger: { base: 0.29, scale: 0.05 },
+    options: {
+      size: 26,
+      burst: 6,
+      color: '#ffd166',
+      cooldown: [4, 5],
+    },
+  },
+  {
+    id: 'vaultSnap',
+    name: 'Vault Snap',
+    description: 'Chunky vaults crash down, linger, then shatter into shards.',
+    danger: { base: 0.31, scale: 0.05 },
+    options: {
+      size: 30,
+      burst: 8,
+      color: '#ffc371',
+      cooldown: [4.5, 5.8],
+    },
+  },
+];
+
+const latticeCurseConfigs = [
+  {
+    id: 'latticeGlass',
+    name: 'Lattice Glass',
+    description: 'Telegraphed panes descend in grids. Stacks increase the grid density.',
+    danger: { base: 0.27, scale: 0.05 },
+    options: {
+      cells: 3,
+      color: '#94e2ff',
+      speed: 130,
+      shape: 'square',
+    },
+  },
+  {
+    id: 'gridMires',
+    name: 'Grid Mires',
+    description: 'Sticky lattice lockers drop slower but with more tiles each stack.',
+    danger: { base: 0.28, scale: 0.05 },
+    options: {
+      cells: 4,
+      color: '#ff8fc7',
+      speed: 110,
+      shape: 'locker',
+    },
+  },
+];
+
+const stopGoCurseConfigs = [
+  {
+    id: 'stasisMarch',
+    name: 'Stasis March',
+    description: 'Columns surge, freeze, then march again. Stacks reduce the breathing room.',
+    danger: { base: 0.26, scale: 0.05 },
+    options: {
+      axis: 'horizontal',
+      color: '#9df7d2',
+      idle: 0.45,
+      move: 1.15,
+      speed: 160,
+      shape: 'square',
+    },
+  },
+  {
+    id: 'anchorDrift',
+    name: 'Anchor Drift',
+    description: 'Diamond anchors drift diagonally, halt, then burst back into motion.',
+    danger: { base: 0.28, scale: 0.05 },
+    options: {
+      axis: 'diagonal',
+      color: '#ffa5dd',
+      idle: 0.35,
+      move: 1.3,
+      speed: 150,
+      shape: 'diamond',
+    },
+  },
+  {
+    id: 'guardianStop',
+    name: 'Guardian Stop',
+    description: 'Hex sentinels slam vertically, pause, and resume. Stacks stack the squads.',
+    danger: { base: 0.29, scale: 0.05 },
+    options: {
+      axis: 'vertical',
+      color: '#ffd1f0',
+      idle: 0.5,
+      move: 1.4,
+      speed: 165,
+      shape: 'hex',
+    },
+  },
+];
+
+const growthCurseConfigs = [
+  {
+    id: 'bloomingMotes',
+    name: 'Blooming Motes',
+    description: 'Orbs inflate and deflate before detonating. Stacks widen their radius swing.',
+    danger: { base: 0.26, scale: 0.04 },
+    options: {
+      grow: true,
+      color: '#fff06f',
+      shape: 'ring',
+    },
+  },
+  {
+    id: 'dimmingStars',
+    name: 'Dimming Stars',
+    description: 'Tiny stars blink smaller before bursting forward.',
+    danger: { base: 0.25, scale: 0.04 },
+    options: {
+      grow: false,
+      color: '#9ac8ff',
+      shape: 'star',
+    },
+  },
+];
+
+const burstCurseConfigs = [
+  {
+    id: 'emberSatchel',
+    name: 'Ember Satchel',
+    description: 'Bulky satchels telegraph before erupting into slow magma squares.',
+    danger: { base: 0.29, scale: 0.05 },
+    options: {
+      color: '#ffba70',
+      count: 6,
+      shape: 'square',
+      cooldown: [4, 5.2],
+    },
+  },
+  {
+    id: 'petalScatter',
+    name: 'Petal Scatter',
+    description: 'Petal seeds burst into sweeping rings. Stacks add more petals.',
+    danger: { base: 0.28, scale: 0.05 },
+    options: {
+      color: '#ffa3d5',
+      count: 8,
+      shape: 'triangle',
+      cooldown: [3.8, 4.8],
+    },
+  },
+  {
+    id: 'voidKnock',
+    name: 'Void Knock',
+    description: 'Locker seals crack and emit locker-shaped shrapnel.',
+    danger: { base: 0.3, scale: 0.05 },
+    options: {
+      color: '#c7b1ff',
+      count: 5,
+      shape: 'locker',
+      cooldown: [4.2, 5.5],
+    },
+  },
+];
+
+const autoConfigGroups = [
+  { configs: waveCurseConfigs, factory: createWaveSpawner },
+  { configs: retreatCurseConfigs, factory: createRetreatSpawner },
+  { configs: lockerCurseConfigs, factory: createLockerSpawner },
+  { configs: latticeCurseConfigs, factory: createLatticeSpawner },
+  { configs: stopGoCurseConfigs, factory: createStopGoSpawner },
+  { configs: growthCurseConfigs, factory: createGrowthSpawner },
+  { configs: burstCurseConfigs, factory: createBurstSeedSpawner },
+];
+
+autoConfigGroups.forEach(({ configs, factory }) => {
+  configs.forEach((config) => {
+    CHOICES.push({
+      id: config.id,
+      name: config.name,
+      description: config.description,
+      apply: (run, stack) => {
+        const spawner = ensureSpawner(run, config.id, () => factory(config.id, config.options));
+        spawner.level = stack;
+        run.danger += config.danger.base + stack * config.danger.scale;
+      },
+    });
+  });
+});
+
 const CHOICE_LOOKUP = Object.fromEntries(CHOICES.map((choice) => [choice.id, choice]));
 
 function createPlayer() {
@@ -510,12 +824,12 @@ function createHaloSpawner() {
     level: 1,
     timer: 0,
     tick(run, dt) {
-      const rate = 0.9 + spawner.level * 0.15;
+      const rate = 0.85 + spawner.level * 0.12;
       spawner.timer -= dt * rate;
       angle += dt * rate;
       if (spawner.timer <= 0) {
-        const emitters = 2 + spawner.level;
-        const count = 8 + spawner.level * 4;
+        const emitters = 2 + Math.floor(spawner.level * 0.8);
+        const count = 6 + spawner.level * 3;
         for (let i = 0; i < count; i++) {
           const theta = angle + (Math.PI * 2 * i) / count;
           run.bullets.push({
@@ -530,7 +844,7 @@ function createHaloSpawner() {
           });
         }
         audio.play('bullet');
-        spawner.timer = rand(1.6, 2.2) / rate;
+        spawner.timer = rand(1.8, 2.5) / rate;
       }
     },
   };
@@ -582,7 +896,7 @@ function createFanSpawner() {
         const edge = randInt(0, 3);
         const point = getEdgePoint(edge);
         const baseAngle = edge === 0 ? Math.PI / 2 : edge === 1 ? Math.PI : edge === 2 ? -Math.PI / 2 : 0;
-        const count = 5 + spawner.level;
+        const count = 4 + Math.floor(spawner.level * 0.8);
         for (let i = 0; i < count; i++) {
           const offset = ((i - (count - 1) / 2) / Math.max(1, count - 1)) * (Math.PI / 3);
           const angle = baseAngle + offset;
@@ -598,7 +912,7 @@ function createFanSpawner() {
           });
         }
         audio.play('bullet');
-        spawner.timer = rand(2, 3.1) / haste;
+        spawner.timer = rand(2.2, 3.3) / haste;
       }
     },
   };
@@ -682,9 +996,14 @@ function createSeekerSpawner() {
       if (spawner.timer <= 0) {
         const count = 1 + Math.floor(spawner.level / 2);
         for (let i = 0; i < count; i++) {
+          const spawnX = rand(50, WIDTH - 50);
+          const spawnY = rand(50, HEIGHT - 50);
           run.bullets.push({
-            x: rand(50, WIDTH - 50),
-            y: rand(50, HEIGHT - 50),
+            x: spawnX,
+            y: spawnY,
+            spawnX,
+            spawnY,
+            warning: 0.65,
             vx: rand(-30, 30),
             vy: rand(-30, 30),
             radius: 5 + spawner.level * 0.4,
@@ -746,6 +1065,9 @@ function createTunnelSpawner() {
             run.bullets.push({
               x,
               y,
+              spawnX: x,
+              spawnY: y,
+              warning: 0.5,
               vx: 0,
               vy: 190 + spawner.level * 25,
               radius: 4,
@@ -760,6 +1082,9 @@ function createTunnelSpawner() {
             run.bullets.push({
               x,
               y,
+              spawnX: x,
+              spawnY: y,
+              warning: 0.5,
               vx: 190 + spawner.level * 25,
               vy: 0,
               radius: 4,
@@ -786,7 +1111,7 @@ function createRainSpawner() {
       const haste = 1 + (spawner.level - 1) * 0.25;
       spawner.timer -= dt * haste;
       if (spawner.timer <= 0) {
-        const count = randInt(6, 10) + spawner.level * 2;
+        const count = randInt(4, 7) + Math.floor(spawner.level * 1.5);
         for (let i = 0; i < count; i++) {
           run.bullets.push({
             x: rand(20, WIDTH - 20),
@@ -800,7 +1125,7 @@ function createRainSpawner() {
           });
         }
         audio.play('bullet');
-        spawner.timer = rand(1.1, 1.4) / haste;
+        spawner.timer = rand(1.4, 1.8) / haste;
       }
     },
   };
@@ -814,12 +1139,12 @@ function createSpiralSpawner() {
     level: 1,
     timer: 0,
     tick(run, dt) {
-      const rate = 2.2 + spawner.level * 0.3;
+      const rate = 2 + spawner.level * 0.25;
       spawner.timer -= dt * rate;
       angle += dt * rate;
       if (spawner.timer <= 0) {
         const speed = 160 + spawner.level * 15;
-        const arms = 2 + Math.floor(spawner.level / 2);
+        const arms = 2 + Math.floor(spawner.level / 3);
         for (let i = 0; i < arms; i++) {
           const theta = angle + (Math.PI * 2 * i) / arms;
           run.bullets.push({
@@ -834,7 +1159,7 @@ function createSpiralSpawner() {
           });
         }
         audio.play('bullet');
-        spawner.timer = 0.6 / rate;
+        spawner.timer = 0.7 / rate;
       }
     },
   };
@@ -1205,6 +1530,425 @@ function createChainSpawner(id) {
   return spawner;
 }
 
+function createWaveSpawner(id, options = {}) {
+  const config = {
+    axis: 'horizontal',
+    path: 'sine',
+    lanes: 2,
+    amplitude: 60,
+    zigzag: 90,
+    color: '#cfe9ff',
+    shape: 'diamond',
+    speed: 150,
+    cooldown: [2.4, 3.4],
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const lanes = Math.min(5, config.lanes + Math.floor((spawner.level - 1) / 2));
+        let fired = false;
+        for (let lane = 0; lane < lanes; lane++) {
+          const dir = Math.random() < 0.5 ? 1 : -1;
+          spawnWaveProjectile(run, lane, lanes, dir);
+          fired = true;
+        }
+        if (fired) audio.play('bullet');
+        spawner.timer = rand(config.cooldown[0], config.cooldown[1]) / haste;
+      }
+    },
+  };
+
+  function spawnWaveProjectile(run, lane, lanes, dir) {
+    const horizontal = config.axis === 'horizontal';
+    const speed = (config.speed || 150) + spawner.level * 10;
+    const collisionShapes = ['triangle', 'diamond', 'locker', 'hex'];
+    const type = collisionShapes.includes(config.shape) ? 'square' : 'circle';
+    let x;
+    let y;
+    if (horizontal) {
+      x = dir > 0 ? -25 : WIDTH + 25;
+      const band = (lane + 0.5) / lanes;
+      y = clamp(band * HEIGHT + rand(-25, 25), 30, HEIGHT - 30);
+    } else {
+      y = dir > 0 ? -25 : HEIGHT + 25;
+      const band = (lane + 0.5) / lanes;
+      x = clamp(band * WIDTH + rand(-25, 25), 30, WIDTH - 30);
+    }
+    const bullet = {
+      x,
+      y,
+      vx: horizontal ? dir * speed : 0,
+      vy: horizontal ? 0 : dir * speed,
+      radius: 5,
+      size: 14,
+      type,
+      color: config.color || '#cfe9ff',
+      damage: 8 + spawner.level,
+      shape: config.shape,
+      ignoreGravity: true,
+    };
+    bullet.baseVx = bullet.vx;
+    bullet.baseVy = bullet.vy;
+    if (config.path === 'sine') {
+      bullet.osc = {
+        axis: horizontal ? 'y' : 'x',
+        amplitude: (config.amplitude || 60) + spawner.level * 4,
+        speed: 4 + spawner.level * 0.4,
+      };
+    } else {
+      bullet.zigzag = {
+        axis: horizontal ? 'y' : 'x',
+        magnitude: (config.zigzag || 90) + spawner.level * 6,
+        interval: 0.22,
+        dir: 1,
+      };
+    }
+    run.bullets.push(bullet);
+  }
+
+  return spawner;
+}
+
+function createRetreatSpawner(id, options = {}) {
+  const config = {
+    color: '#ffa17a',
+    shape: 'diamond',
+    pause: 0.4,
+    advance: 0.6,
+    speed: 190,
+    warning: 0.65,
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = 2 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < count; i++) {
+          const spawnX = clamp(rand(50, WIDTH - 50), 30, WIDTH - 30);
+          const spawnY = clamp(rand(50, HEIGHT - 50), 30, HEIGHT - 30);
+          const angle = rand(0, Math.PI * 2);
+          const velocity = (config.speed || 190) + spawner.level * 12;
+          const collisionShapes = ['triangle', 'diamond', 'locker', 'hex'];
+          const type = collisionShapes.includes(config.shape) ? 'square' : 'circle';
+          run.bullets.push({
+            x: spawnX,
+            y: spawnY,
+            spawnX,
+            spawnY,
+            warning: config.warning,
+            vx: Math.cos(angle) * velocity,
+            vy: Math.sin(angle) * velocity,
+            radius: 6,
+            size: 14,
+            type,
+            color: config.color || '#ffa17a',
+            damage: 9 + spawner.level,
+            shape: config.shape,
+            ignoreGravity: true,
+            retreat: {
+              phase: 'advance',
+              timer: config.advance,
+              pause: config.pause,
+              multiplier: 1.15 + spawner.level * 0.1,
+            },
+          });
+        }
+        audio.play('bullet');
+        spawner.timer = rand(3, 4.3) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createLockerSpawner(id, options = {}) {
+  const config = {
+    size: 28,
+    burst: 6,
+    color: '#ffd166',
+    cooldown: [4.4, 5.8],
+    speed: 70,
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const dropCount = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < dropCount; i++) {
+          const spawnX = clamp(rand(50, WIDTH - 50), 40, WIDTH - 40);
+          const spawnY = clamp(rand(60, HEIGHT - 60), 50, HEIGHT - 50);
+          const size = config.size + spawner.level * 1.5;
+          run.bullets.push({
+            x: spawnX,
+            y: spawnY,
+            spawnX,
+            spawnY,
+            warning: 0.8,
+            vx: rand(-20, 20),
+            vy: config.speed + spawner.level * 6,
+            size,
+            type: 'square',
+            color: config.color || '#ffd166',
+            damage: 14 + spawner.level * 2,
+            shape: 'locker',
+            ignoreGravity: true,
+            life: 4.5 + spawner.level * 0.2,
+            explodeCount: config.burst + Math.floor(spawner.level / 2),
+            explodeSpeed: 120 + spawner.level * 12,
+            explodeColor: config.color || '#ffd166',
+            explodeShape: 'square',
+            explodeDamage: 8 + spawner.level,
+          });
+        }
+        audio.play('bullet');
+        spawner.timer = rand(config.cooldown[0], config.cooldown[1]) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createLatticeSpawner(id, options = {}) {
+  const config = {
+    cells: 3,
+    color: '#94e2ff',
+    speed: 130,
+    shape: 'square',
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const cols = Math.min(5, config.cells + Math.floor((spawner.level - 1) / 2));
+        const rows = 1 + Math.floor(spawner.level / 3);
+        const type = 'square';
+        for (let c = 0; c < cols; c++) {
+          for (let r = 0; r < rows; r++) {
+            const dir = r % 2 === 0 ? 1 : -1;
+            const spawnX = clamp(((c + 0.5) / cols) * WIDTH + rand(-20, 20), 30, WIDTH - 30);
+            const telegraphY = dir > 0 ? rand(40, HEIGHT / 2) : rand(HEIGHT / 2, HEIGHT - 40);
+            run.bullets.push({
+              x: spawnX,
+              y: telegraphY,
+              spawnX,
+              spawnY: telegraphY,
+              warning: 0.55,
+              vx: 0,
+              vy: dir * ((config.speed || 130) + spawner.level * 8),
+              size: 18,
+              type,
+              color: config.color || '#94e2ff',
+              damage: 9 + spawner.level,
+              shape: config.shape,
+              ignoreGravity: true,
+            });
+          }
+        }
+        audio.play('bullet');
+        spawner.timer = rand(3.3, 4.6) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createStopGoSpawner(id, options = {}) {
+  const config = {
+    axis: 'horizontal',
+    color: '#9df7d2',
+    idle: 0.45,
+    move: 1.1,
+    speed: 160,
+    shape: 'square',
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = Math.min(4, 2 + Math.floor(spawner.level / 2));
+        for (let i = 0; i < count; i++) {
+          const dir = Math.random() < 0.5 ? 1 : -1;
+          const { x, y, vx, vy } = stopGoSpawnPoint(dir, i, count);
+          const collisionShapes = ['diamond', 'locker', 'hex'];
+          const type = collisionShapes.includes(config.shape) ? 'square' : 'circle';
+          const bullet = {
+            x,
+            y,
+            vx,
+            vy,
+            radius: 5,
+            size: 14,
+            type,
+            color: config.color || '#9df7d2',
+            damage: 8 + spawner.level,
+            shape: config.shape,
+            ignoreGravity: true,
+            stopGo: {
+              phase: 'move',
+              timer: config.move,
+              idle: config.idle,
+              move: config.move,
+            },
+          };
+          bullet.baseVx = vx;
+          bullet.baseVy = vy;
+          run.bullets.push(bullet);
+        }
+        audio.play('bullet');
+        spawner.timer = rand(2.8, 3.6) / haste;
+      }
+    },
+  };
+
+  function stopGoSpawnPoint(dir, index, count) {
+    const spacing = (index + 0.5) / count;
+    const speed = (config.speed || 160) + spawner.level * 10;
+    if (config.axis === 'horizontal') {
+      return {
+        x: dir > 0 ? -20 : WIDTH + 20,
+        y: clamp(spacing * HEIGHT, 40, HEIGHT - 40),
+        vx: dir * speed,
+        vy: 0,
+      };
+    }
+    if (config.axis === 'vertical') {
+      return {
+        x: clamp(spacing * WIDTH, 40, WIDTH - 40),
+        y: dir > 0 ? -20 : HEIGHT + 20,
+        vx: 0,
+        vy: dir * speed,
+      };
+    }
+    return {
+      x: dir > 0 ? -20 : WIDTH + 20,
+      y: dir > 0 ? -20 : HEIGHT + 20,
+      vx: dir * speed,
+      vy: dir * speed,
+    };
+  }
+
+  return spawner;
+}
+
+function createGrowthSpawner(id, options = {}) {
+  const config = {
+    grow: true,
+    color: '#fff06f',
+    shape: 'ring',
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = 2 + Math.floor(spawner.level / 2);
+        const collisionShapes = ['triangle', 'diamond', 'locker', 'hex'];
+        const type = collisionShapes.includes(config.shape) ? 'square' : 'circle';
+        for (let i = 0; i < count; i++) {
+          const spawnX = clamp(rand(40, WIDTH - 40), 30, WIDTH - 30);
+          const spawnY = clamp(rand(40, HEIGHT - 40), 30, HEIGHT - 30);
+          run.bullets.push({
+            x: spawnX,
+            y: spawnY,
+            spawnX,
+            spawnY,
+            warning: 0.55,
+            vx: rand(-50, 50),
+            vy: rand(-50, 50),
+            radius: 4,
+            size: 10,
+            type,
+            color: config.color || '#fff06f',
+            damage: 7 + spawner.level,
+            shape: config.shape,
+            ignoreGravity: true,
+            growth: {
+              grow: config.grow,
+              min: 4,
+              max: 12 + spawner.level,
+              speed: 3 + spawner.level * 0.3,
+            },
+            life: 4 + spawner.level * 0.4,
+            explodeCount: 0,
+          });
+        }
+        audio.play('bullet');
+        spawner.timer = rand(3, 4.1) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createBurstSeedSpawner(id, options = {}) {
+  const config = {
+    color: '#ffba70',
+    count: 6,
+    shape: 'square',
+    cooldown: [4, 5.2],
+    ...options,
+  };
+  const spawner = {
+    id,
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const seeds = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < seeds; i++) {
+          run.hazards.push({
+            type: 'burstSeed',
+            x: rand(60, WIDTH - 60),
+            y: rand(60, HEIGHT - 60),
+            timer: 0.9,
+            ttl: 0.9,
+            color: config.color || '#ffba70',
+            shape: config.shape,
+            count: config.count + spawner.level,
+            level: spawner.level,
+            speed: 130 + spawner.level * 12,
+            damage: 8 + spawner.level,
+          });
+        }
+        spawner.timer = rand(config.cooldown[0], config.cooldown[1]) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
 function getEdgePoint(edge) {
   switch (edge) {
     case 0:
@@ -1387,7 +2131,7 @@ function updateRun(run, delta) {
   run.spawnTimer -= delta * run.spawnRate;
   if (run.spawnTimer <= 0) {
     spawnBullet(run);
-    run.spawnTimer = Math.max(0.9, run.baseSpawn - run.time * run.spawnAcceleration);
+    run.spawnTimer = Math.max(1.3, run.baseSpawn - run.time * run.spawnAcceleration);
   }
 
   run.extraSpawners.forEach((spawner) => spawner.tick && spawner.tick(run, delta));
@@ -1509,9 +2253,9 @@ document.addEventListener('keyup', (event) => {
 });
 
 function spawnBullet(run) {
-  if (run.bullets.length > 140) return;
+  if (run.bullets.length > BASE_BULLET_CAP) return;
   const edge = randInt(0, 3);
-  const speed = rand(55, 105) * run.bulletSpeed;
+  const speed = rand(50, 90) * run.bulletSpeed;
   let x, y, vx, vy;
   if (edge === 0) {
     x = rand(0, WIDTH);
@@ -1536,6 +2280,18 @@ function spawnBullet(run) {
   }
 
   const type = Math.random() < 0.5 ? 'circle' : 'square';
+  const shapePool =
+    type === 'circle' ? ['circle', 'ring'] : ['square', 'diamond', 'triangle', 'hex', 'locker'];
+  const shape = shapePool[randInt(0, shapePool.length - 1)];
+  const shapeColors = {
+    circle: '#7ff7ff',
+    ring: '#9de3ff',
+    square: '#ffa4a4',
+    diamond: '#ffcf9a',
+    triangle: '#ff9ad5',
+    hex: '#b2ffda',
+    locker: '#ffd166',
+  };
   const bullet = {
     x,
     y,
@@ -1544,12 +2300,13 @@ function spawnBullet(run) {
     radius: rand(4, 7),
     size: rand(6, 12),
     type,
-    damage: 10,
-    color: type === 'circle' ? '#7ff7ff' : '#ffa4a4',
+    damage: 9,
+    color: shapeColors[shape] || (type === 'circle' ? '#7ff7ff' : '#ffa4a4'),
+    shape,
     warning: 0,
   };
 
-  if (Math.random() < 0.2) {
+  if (Math.random() < 0.15) {
     bullet.warning = rand(0.5, 1.1);
     bullet.spawnX = rand(30, WIDTH - 30);
     bullet.spawnY = rand(30, HEIGHT - 30);
@@ -1580,6 +2337,15 @@ function spawnBullet(run) {
 function explodeBullet(run, bullet) {
   if (!bullet.explodeCount) return;
   const count = bullet.explodeCount;
+  const shape = bullet.explodeShape || 'circle';
+  const type = ['triangle', 'diamond', 'locker', 'hex', 'square'].includes(shape)
+    ? 'square'
+    : 'circle';
+  const color = bullet.explodeColor || '#ffa86d';
+  const damage =
+    typeof bullet.explodeDamage === 'number'
+      ? bullet.explodeDamage
+      : Math.max(6, (bullet.damage || 8) * 0.6);
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count;
     run.bullets.push({
@@ -1588,9 +2354,12 @@ function explodeBullet(run, bullet) {
       vx: Math.cos(angle) * (bullet.explodeSpeed || 140),
       vy: Math.sin(angle) * (bullet.explodeSpeed || 140),
       radius: 3,
-      damage: Math.max(6, (bullet.damage || 8) * 0.6),
-      type: 'circle',
-      color: '#ffa86d',
+      size: 10,
+      damage,
+      type,
+      color,
+      shape,
+      ignoreGravity: true,
     });
   }
   audio.play('bullet');
@@ -1710,7 +2479,12 @@ function updateBullets(run, delta) {
       }
       continue;
     }
-    if (run.gravityPull) {
+    if (bullet.baseVx === undefined) {
+      bullet.baseVx = bullet.vx;
+      bullet.baseVy = bullet.vy;
+    }
+    applyBulletBehavior(bullet, delta);
+    if (run.gravityPull && !bullet.ignoreGravity) {
       const dx = player.x - bullet.x;
       const dy = player.y - bullet.y;
       const pull = 0.8 + run.gravityPull * 0.25;
@@ -1769,6 +2543,76 @@ function updateBullets(run, delta) {
         explodeBullet(run, bullet);
         run.bullets.splice(i, 1);
       }
+    }
+  }
+}
+
+function applyBulletBehavior(bullet, delta) {
+  if (bullet.osc) {
+    bullet.osc.phase = (bullet.osc.phase || 0) + bullet.osc.speed * delta;
+    const offset = Math.sin(bullet.osc.phase) * bullet.osc.amplitude;
+    if (bullet.osc.axis === 'x') {
+      bullet.vx = (bullet.baseVx || bullet.vx) + offset;
+    } else {
+      bullet.vy = (bullet.baseVy || bullet.vy) + offset;
+    }
+  }
+  if (bullet.zigzag) {
+    bullet.zigzag.timer = (bullet.zigzag.timer || bullet.zigzag.interval) - delta;
+    if (bullet.zigzag.timer <= 0) {
+      bullet.zigzag.dir = -(bullet.zigzag.dir || 1);
+      bullet.zigzag.timer += bullet.zigzag.interval;
+    }
+    const magnitude = bullet.zigzag.magnitude * (bullet.zigzag.dir || 1);
+    if (bullet.zigzag.axis === 'x') {
+      bullet.vx = (bullet.baseVx || bullet.vx) + magnitude;
+    } else {
+      bullet.vy = (bullet.baseVy || bullet.vy) + magnitude;
+    }
+  }
+  if (bullet.retreat) {
+    if (bullet.retreat.originVx === undefined) {
+      bullet.retreat.originVx = bullet.baseVx || bullet.vx;
+      bullet.retreat.originVy = bullet.baseVy || bullet.vy;
+    }
+    bullet.retreat.timer -= delta;
+    if (bullet.retreat.phase === 'advance' && bullet.retreat.timer <= 0) {
+      bullet.retreat.phase = 'pause';
+      bullet.retreat.timer = bullet.retreat.pause;
+      bullet.vx = 0;
+      bullet.vy = 0;
+    } else if (bullet.retreat.phase === 'pause' && bullet.retreat.timer <= 0) {
+      bullet.retreat.phase = 'retreat';
+      bullet.vx = -(bullet.retreat.originVx || 0) * bullet.retreat.multiplier;
+      bullet.vy = -(bullet.retreat.originVy || 0) * bullet.retreat.multiplier;
+      bullet.baseVx = bullet.vx;
+      bullet.baseVy = bullet.vy;
+    }
+  }
+  if (bullet.stopGo) {
+    bullet.stopGo.timer -= delta;
+    if (bullet.stopGo.phase === 'move' && bullet.stopGo.timer <= 0) {
+      bullet.stopGo.phase = 'idle';
+      bullet.stopGo.timer = bullet.stopGo.idle;
+      bullet.vx = 0;
+      bullet.vy = 0;
+    } else if (bullet.stopGo.phase === 'idle' && bullet.stopGo.timer <= 0) {
+      bullet.stopGo.phase = 'move';
+      bullet.stopGo.timer = bullet.stopGo.move;
+      bullet.vx = bullet.baseVx || bullet.vx;
+      bullet.vy = bullet.baseVy || bullet.vy;
+    }
+  }
+  if (bullet.growth) {
+    bullet.growth.phase = (bullet.growth.phase || 0) + delta * bullet.growth.speed;
+    const swing = bullet.growth.grow
+      ? Math.sin(bullet.growth.phase) * 0.5 + 0.5
+      : Math.cos(bullet.growth.phase) * 0.5 + 0.5;
+    const size = bullet.growth.min + (bullet.growth.max - bullet.growth.min) * swing;
+    if (bullet.type === 'circle') {
+      bullet.radius = size;
+    } else {
+      bullet.size = size * 2;
     }
   }
 }
@@ -1835,6 +2679,33 @@ function updateHazards(run, delta) {
         if (hazard.waves <= 0) {
           run.hazards.splice(i, 1);
         }
+      }
+    } else if (hazard.type === 'burstSeed') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        const count = hazard.count;
+        const shape = hazard.shape || 'circle';
+        const type = ['triangle', 'diamond', 'locker', 'hex', 'square'].includes(shape)
+          ? 'square'
+          : 'circle';
+        for (let j = 0; j < count; j++) {
+          const angle = (Math.PI * 2 * j) / count;
+          run.bullets.push({
+            x: hazard.x,
+            y: hazard.y,
+            vx: Math.cos(angle) * hazard.speed,
+            vy: Math.sin(angle) * hazard.speed,
+            radius: 4,
+            size: 12,
+            type,
+            color: hazard.color || '#ffba70',
+            damage: hazard.damage,
+            shape,
+            ignoreGravity: true,
+          });
+        }
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
       }
     } else if (hazard.type === 'shardWarn') {
       hazard.timer -= delta;
@@ -2201,14 +3072,7 @@ function drawRun(run) {
       ctx.lineWidth = lw;
       return;
     }
-    ctx.fillStyle = bullet.color;
-    if (bullet.type === 'circle') {
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.fillRect(bullet.x - bullet.size / 2, bullet.y - bullet.size / 2, bullet.size, bullet.size);
-    }
+    drawBulletShape(bullet);
   });
 
   run.hazards.forEach((hazard) => {
@@ -2245,8 +3109,19 @@ function drawRun(run) {
       ctx.beginPath();
       ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (hazard.type === 'burstSeed') {
+      const pct = hazard.timer / hazard.ttl;
+      ctx.save();
+      ctx.strokeStyle = hazard.color || '#ffba70';
+      ctx.globalAlpha = 0.25 + pct * 0.35;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 14 + (1 - pct) * 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     } else if (hazard.type === 'shardWarn') {
       const pct = hazard.timer / hazard.ttl;
+      const lw = ctx.lineWidth;
       ctx.strokeStyle = `rgba(255,255,255,${0.4 * pct})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -2258,6 +3133,7 @@ function drawRun(run) {
       ctx.moveTo(hazard.x, hazard.y - 12);
       ctx.lineTo(hazard.x, hazard.y + 12);
       ctx.stroke();
+      ctx.lineWidth = lw;
     } else if (hazard.type === 'rupture' || hazard.type === 'pulse') {
       const pct = hazard.timer / hazard.ttl;
       ctx.strokeStyle = `rgba(255,140,122,${pct})`;
@@ -2342,6 +3218,94 @@ function drawRun(run) {
     ctx.fillStyle = `rgba(255,80,80,${run.flash * 0.4})`;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
   }
+}
+
+function drawBulletShape(bullet) {
+  const shape = bullet.shape || (bullet.type === 'circle' ? 'circle' : 'square');
+  const color = bullet.color || '#ffffff';
+  const size = bullet.size || bullet.radius * 2;
+  ctx.fillStyle = color;
+  switch (shape) {
+    case 'ring': {
+      const lw = ctx.lineWidth;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = lw;
+      break;
+    }
+    case 'diamond': {
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-size / 2, -size / 2, size, size);
+      ctx.restore();
+      break;
+    }
+    case 'triangle': {
+      ctx.beginPath();
+      ctx.moveTo(bullet.x, bullet.y - size / 2);
+      ctx.lineTo(bullet.x + size / 2, bullet.y + size / 2);
+      ctx.lineTo(bullet.x - size / 2, bullet.y + size / 2);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'hex': {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 3) * i;
+        const px = bullet.x + Math.cos(angle) * size * 0.5;
+        const py = bullet.y + Math.sin(angle) * size * 0.5;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'locker': {
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.fillRect(-size / 2, -size / 2, size, size);
+      ctx.fillStyle = '#05070c';
+      ctx.fillRect(-size / 6, -size / 3, size / 3, (size * 2) / 3);
+      ctx.restore();
+      break;
+    }
+    case 'star': {
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.beginPath();
+      const spikes = 5;
+      for (let i = 0; i < spikes * 2; i++) {
+        const radius = i % 2 === 0 ? size / 2 : size / 4;
+        const angle = (Math.PI * i) / spikes;
+        const px = Math.cos(angle) * radius;
+        const py = Math.sin(angle) * radius;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case 'square': {
+      ctx.fillRect(bullet.x - size / 2, bullet.y - size / 2, size, size);
+      break;
+    }
+    case 'circle':
+    default: {
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+  }
+  ctx.fillStyle = color;
 }
 
 function drawPlayerShape(player) {
@@ -2531,7 +3495,7 @@ loginBtn.addEventListener('click', () => {
       wins: 0,
       losses: 0,
       bestSolo: 0,
-      unlockedChoices: getInitialUnlockedChoiceIds(),
+      unlockedChoices: rollInitialChoiceIds(),
     };
   }
   const record = state.accounts[key];
@@ -2605,7 +3569,7 @@ function awardUnlocks(run, result) {
   }
   unlockCount = Math.min(locked.length, unlockCount);
   if (unlockCount <= 0) return [];
-  const awarded = locked.slice(0, unlockCount);
+  const awarded = randomSample(locked, unlockCount);
   data.unlockedChoices.push(...awarded);
   saveAccounts(state.accounts);
   renderAccountStats();
@@ -2622,7 +3586,7 @@ function getUnlockedChoiceIds() {
 }
 
 function getInitialUnlockedChoiceIds() {
-  return CHOICES.slice(0, 10).map((choice) => choice.id);
+  return rollInitialChoiceIds();
 }
 
 function sanitizeUnlocked(list = []) {
@@ -2634,9 +3598,23 @@ function sanitizeUnlocked(list = []) {
     }
   });
   if (!set.size) {
-    getInitialUnlockedChoiceIds().forEach((id) => set.add(id));
+    rollInitialChoiceIds().forEach((id) => set.add(id));
   }
   return [...set];
+}
+
+function rollInitialChoiceIds(count = BASE_UNLOCK_COUNT) {
+  const ids = CHOICES.map((choice) => choice.id);
+  return randomSample(ids, count);
+}
+
+function randomSample(list, count) {
+  const pool = [...list];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(count, pool.length));
 }
 
 function simpleHash(str) {
