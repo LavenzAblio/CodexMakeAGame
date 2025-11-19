@@ -1993,9 +1993,17 @@ function clearQueueTimers() {
   }
 }
 
+const PEER_OPTIONS = {
+  debug: 0,
+  host: '0.peerjs.com',
+  port: 443,
+  secure: true,
+  path: '/peerjs',
+};
+
 function ensurePeer() {
   if (state.peer || !window.Peer) return;
-  state.peer = new Peer(undefined, { debug: 0 });
+  state.peer = new Peer(undefined, PEER_OPTIONS);
   state.peer.on('open', (id) => {
     state.peerId = id;
   });
@@ -2008,6 +2016,14 @@ function ensurePeer() {
   });
   state.peer.on('error', (err) => {
     console.warn('Peer error', err);
+    queueMessage.textContent = '매치 서버 연결에 실패했습니다. 네트워크와 HTTPS 접속을 확인해주세요.';
+  });
+  state.peer.on('disconnected', () => {
+    try {
+      state.peer.reconnect();
+    } catch (e) {
+      console.warn('Peer reconnect failed', e);
+    }
   });
 }
 
