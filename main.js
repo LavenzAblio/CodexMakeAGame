@@ -3207,11 +3207,11 @@ function presentChoices(run, opponentChoice = false) {
   canvas.classList.add('blur');
   audio.play('choice');
   choiceOptionsEl.innerHTML = '';
-  choiceTitle.textContent = state.mode === 'pvp' ? 'Curse your opponent' : 'Choose your next affliction';
+  choiceTitle.textContent = state.mode === 'pvp' ? '상대를 저주하세요.' : '다음 저주를 선택하세요.';
   choiceSubtitle.textContent =
     state.mode === 'pvp'
-      ? 'Your rival chooses a curse for you at the same time.'
-      : 'Each curse stacks until you fall. There are no pure bonuses here.';
+      ? '당신의 상대가 당신의 저주를 선택합니다.'
+      : '저주는 중첩됩니다. 긍정적인 효과만을 가진 저주는 없습니다.';
   const timerBar = document.createElement('span');
   timerBar.style.width = '100%';
   choiceTimerEl.innerHTML = '';
@@ -3615,85 +3615,7 @@ function drawBulletShape(run, bullet) {
       }
       ctx.closePath();
       ctx.fill();
-      ctx.restore();
-      break;
-    }
-    case 'hammer': {
-      ctx.save();
-      ctx.translate(bullet.x, bullet.y);
-      ctx.rotate(bullet.angle || 0);
-      const head = size * 0.55;
-      const handle = size * 0.2;
-      ctx.fillRect(-head / 2, -head / 2, head, head);
-      ctx.fillRect(-handle / 2, head / 2 - handle / 2, handle, size);
-      ctx.restore();
-      break;
-    }
-    case 'skull': {
-      ctx.save();
-      ctx.translate(bullet.x, bullet.y);
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#05070c';
-      ctx.beginPath();
-      ctx.arc(-radius / 3, -radius / 4, radius / 6, 0, Math.PI * 2);
-      ctx.arc(radius / 3, -radius / 4, radius / 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(-radius / 3, radius / 4, (radius * 2) / 3, radius / 4);
-      ctx.restore();
-      ctx.fillStyle = color;
-      break;
-    }
-    case 'square': {
-      ctx.fillRect(bullet.x - size / 2, bullet.y - size / 2, size, size);
-      break;
-    }
-    case 'circle':
-    default: {
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-      break;
-    }
-  }
-  ctx.fillStyle = color;
-}
-
-function drawPlayerShape(player) {
-  ctx.save();
-  ctx.translate(player.x, player.y);
-  ctx.rotate(player.spin || 0);
-  const baseColor = player.hurtTimer > 0 ? '#ff9292' : player.color;
-  ctx.fillStyle = baseColor;
-  if (player.armorTimer > 0) {
-    const glow = player.armorTimer / ARMOR_DURATION;
-    ctx.shadowColor = `rgba(255,255,255,${glow * 0.8})`;
-    ctx.shadowBlur = 15;
-  }
-  ctx.strokeStyle = '#05070c';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  const spikes = 5;
-  const inner = player.radius * 0.6;
-  const outer = player.radius + 4;
-  for (let i = 0; i < spikes * 2; i++) {
-    const radius = i % 2 === 0 ? outer : inner;
-    const angle = (Math.PI * i) / spikes;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawHUD() {
-  if (!state.run) {
-    hudEl.innerHTML = '<p>Select a mode to begin.</p>';
+      ctx.re요.</p>';
     return;
   }
   const run = state.run;
@@ -3719,7 +3641,7 @@ function drawHUD() {
           return `<span class="choice-chip">${label}${count > 1 ? `<strong>×${count}</strong>` : ''}</span>`;
         })
         .join('')
-    : '<span class="choice-chip empty">No curses yet</span>';
+    : '<span class="choice-chip empty">아직 저주가 선택되지 않았습니다.</span>';
   let opponentBlock = '';
   if (state.mode === 'pvp' && state.opponentRun) {
     const foe = state.opponentRun.player;
@@ -3762,9 +3684,9 @@ function endGame(title, result) {
   gameOverTitle.textContent = title;
   if (state.mode === 'pvp') {
     const opponentTime = state.opponentRun ? state.opponentRun.time.toFixed(1) : '0';
-    gameOverDetail.textContent = `You lasted ${time}s · Opponent lasted ${opponentTime}s`;
+    gameOverDetail.textContent = `당신은 ${time}초 생존하였습니다. · 상대는 ${opponentTime}초 생존하였습니다.`;
   } else {
-    gameOverDetail.textContent = `You survived ${time}s. Dare to try again?`;
+    gameOverDetail.textContent = `당신은 ${time}초 생존하였습니다. 재도전하시겠습니까?`;
   }
   state.recentUnlocks = awardUnlocks(state.run, result);
   renderUnlockList();
@@ -3803,7 +3725,7 @@ mainMenuBtn.addEventListener('click', () => {
   state.opponentRun = null;
   state.recentUnlocks = [];
   resetOverlays();
-  hudEl.innerHTML = '<p>Select a mode to begin.</p>';
+  hudEl.innerHTML = '<p>게임 모드를 선택하세요.</p>';
   renderUnlockList();
   audio.stopMusic();
 });
@@ -3837,7 +3759,7 @@ function showCodex() {
 loginBtn.addEventListener('click', () => {
   const nickname = nicknameInput.value.trim();
   const password = passwordInput.value;
-  if (!nickname || !password) return alert('Nickname and password required');
+  if (!nickname || !password) return alert('닉네임과 비밀번호를 입력하세요.');
   const key = nickname.toLowerCase();
   const hashed = simpleHash(password);
   if (!state.accounts[key]) {
@@ -3867,13 +3789,13 @@ loginBtn.addEventListener('click', () => {
 logoutBtn.addEventListener('click', () => {
   state.account = null;
   state.accountKey = null;
-  accountStatsEl.innerHTML = '<p>Signed out.</p>';
+  accountStatsEl.innerHTML = '<p>로그아웃 되었습니다.</p>';
   renderUnlockList();
 });
 
 function renderAccountStats() {
   if (!state.account) {
-    accountStatsEl.innerHTML = '<p>Playing as guest. Sign in to save unlocks.</p>';
+    accountStatsEl.innerHTML = '<p>게스트로 플레이 중입니다. 로그인을 하여 게임을 저장하세요.</p>';
     renderUnlockList();
     return;
   }
@@ -3881,11 +3803,11 @@ function renderAccountStats() {
   const level = Math.floor(data.exp / 120) + 1;
   const winRate = data.wins + data.losses > 0 ? ((data.wins / (data.wins + data.losses)) * 100).toFixed(1) : '0.0';
   accountStatsEl.innerHTML = `
-    <div>Nickname: <strong>${data.nickname}</strong></div>
-    <div>Level: ${level} · EXP: ${data.exp}</div>
-    <div>1v1 W/L: ${data.wins}/${data.losses} (${winRate}%)</div>
-    <div>Best Solo: ${data.bestSolo.toFixed(1)}s</div>
-    <div>Unlocked choices: ${data.unlockedChoices.length}/${CHOICES.length}</div>
+    <div>닉네임: <strong>${data.nickname}</strong></div>
+    <div>레벨: ${level} · EXP: ${data.exp}</div>
+    <div>1v1 승/패: ${data.wins}/${data.losses} (${winRate}%)</div>
+    <div>최고기록: ${data.bestSolo.toFixed(1)}s</div>
+    <div>해금된 저주: ${data.unlockedChoices.length}/${CHOICES.length}</div>
   `;
   renderUnlockList();
 }
@@ -3893,11 +3815,11 @@ function renderAccountStats() {
 function renderUnlockList() {
   if (!unlockListEl) return;
   if (!state.account) {
-    unlockListEl.innerHTML = '<span>Sign in to unlock more curses.</span>';
+    unlockListEl.innerHTML = '<span>로그인을 하여 더 많은 저주를 해금하세요.</span>';
     return;
   }
   if (!state.recentUnlocks.length) {
-    unlockListEl.innerHTML = '<span>No new curses earned this run.</span>';
+    unlockListEl.innerHTML = '<span>이 게임에서 해금할 저주가 없습니다.</span>';
     return;
   }
   unlockListEl.innerHTML = state.recentUnlocks
@@ -4148,7 +4070,7 @@ function updateLeaderboard(run) {
 function renderLeaderboard() {
   if (!soloLeaderboardEl) return;
   if (!state.leaderboard.length) {
-    soloLeaderboardEl.innerHTML = '<li class="empty">No runs recorded yet.</li>';
+    soloLeaderboardEl.innerHTML = '<li class="empty">기록이 없습니다.</li>';
     return;
   }
   soloLeaderboardEl.innerHTML = state.leaderboard
