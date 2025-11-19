@@ -688,6 +688,11 @@ autoConfigGroups.forEach(({ configs, factory }) => {
   });
 });
 
+const reducedCount = Math.ceil(CHOICES.length / 2);
+if (CHOICES.length > reducedCount) {
+  CHOICES.splice(reducedCount);
+}
+
 const CHOICE_LOOKUP = Object.fromEntries(CHOICES.map((choice) => [choice.id, choice]));
 
 function createPlayer() {
