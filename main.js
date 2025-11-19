@@ -33,6 +33,7 @@ const CHOICE_DURATION = 9;
 const HEAL_INTERVAL = 21.6;
 const HEAL_AMOUNT = 12;
 const ARMOR_DURATION = 1;
+const HIT_INVULN = 0.7;
 const AI_FALLBACK_MS = 30000;
 const BASE_UNLOCK_COUNT = 10;
 const BASE_BULLET_CAP = 120;
@@ -607,6 +608,7 @@ function createPlayer() {
     poisonDamage: 0,
     poisonAccum: 0,
     staminaSlowTimer: 0,
+    spin: 0,
   };
 }
 
@@ -656,6 +658,7 @@ function createRun(options = {}) {
     hpDrainTimer: 0,
     aidDelayLevel: 0,
     taxLevel: 0,
+    lastChoiceIds: [],
   };
 }
 
@@ -712,7 +715,7 @@ function createLanternSpawner(id) {
       const haste = 1 + (spawner.level - 1) * 0.2;
       spawner.timer -= dt * haste;
       if (spawner.timer <= 0) {
-        const lanterns = 1 + spawner.level;
+        const lanterns = Math.max(1, spawner.level);
         for (let i = 0; i < lanterns; i++) {
           const angle = rand(0, Math.PI * 2);
           run.hazards.push({
@@ -815,7 +818,7 @@ function createEmpSpawner() {
       spawner.timer -= dt * haste;
       if (spawner.timer <= 0) {
         run.player.empTimer = Math.max(run.player.empTimer, 2);
-        run.player.empSlow = 0.5;
+        run.player.empSlow = 0.25;
         run.hazards.push({ type: 'emp', timer: 2 });
         spawner.timer = 7 / haste;
       }
@@ -878,7 +881,7 @@ function createBombardSpawner() {
               radius: 50 + spawner.level * 6,
               damage: 8 + spawner.level,
               duration: 1,
-              warn: 0.35,
+              warn: 0,
               y: HEIGHT - 35,
             },
           });
@@ -901,7 +904,7 @@ function createSniperSpawner() {
       if (spawner.timer <= 0) {
         const angle = rand(0, Math.PI * 2);
         const dir = { x: Math.cos(angle), y: Math.sin(angle) };
-        const length = Math.max(WIDTH, HEIGHT) * 2;
+        const length = Math.max(WIDTH, HEIGHT) * 3;
         const origin = {
           x: run.player.x - dir.x * length,
           y: run.player.y - dir.y * length,
@@ -915,6 +918,7 @@ function createSniperSpawner() {
           origin,
           direction: dir,
           length,
+          level: spawner.level,
         });
         spawner.timer = 6 / haste;
       }
@@ -944,6 +948,7 @@ function createSineSpawner() {
           shape: 'triangle',
           color: '#8ce4ff',
           damage: 9 + spawner.level,
+          baseVy: 0,
           osc: { axis: 'y', amplitude: 60 + spawner.level * 5, speed: 4 + spawner.level * 0.2 },
         });
         spawner.timer = 2 / haste;
@@ -1122,6 +1127,7 @@ function createSplitSpawner() {
         const source = candidates[randInt(0, candidates.length - 1)];
         const angle = Math.atan2(source.vy, source.vx);
         const spread = 0.4 + spawner.level * 0.1;
+        const clones = [];
         [-spread, spread].forEach((offset) => {
           const dir = angle + offset;
           const speed = Math.hypot(source.vx, source.vy) || 120;
@@ -1129,8 +1135,11 @@ function createSplitSpawner() {
             vx: Math.cos(dir) * speed,
             vy: Math.sin(dir) * speed,
           });
-          run.bullets.push(clone);
+          clones.push(clone);
         });
+        const idx = run.bullets.indexOf(source);
+        if (idx >= 0) run.bullets.splice(idx, 1);
+        clones.forEach((clone) => run.bullets.push(clone));
       }
     },
   };
@@ -1315,8 +1324,15 @@ function createInflatorSpawner() {
         const candidates = run.bullets.filter((b) => !b.warning);
         if (!candidates.length) return;
         const target = candidates[randInt(0, candidates.length - 1)];
-        if (target.radius) target.radius *= 2;
-        if (target.size) target.size *= 2;
+        const isCircle = typeof target.radius === 'number';
+        const current = isCircle ? target.radius : target.size / 2;
+        const goal = current * 2;
+        const rate = (goal - current) / 0.7;
+        if (isCircle) {
+          target.sizeGrowth = { mode: 'radius', target: goal, speed: Math.max(10, rate) };
+        } else {
+          target.sizeGrowth = { mode: 'size', target: goal * 2, speed: Math.max(20, rate * 2) };
+        }
         target.damage *= 1.2;
       }
     },
@@ -1485,14 +1501,14 @@ function createVenomSpawner() {
           spawnX: spot.x,
           spawnY: spot.y,
           warning: 0.35,
-          vx: rand(-40, 40),
-          vy: rand(-40, 40),
-          radius: 6,
+          vx: rand(-52, 52),
+          vy: rand(-52, 52),
+          radius: 8,
           type: 'circle',
           color: '#9aff9a',
           damage: 6 + spawner.level,
-          life: 4,
-          poison: { duration: 10, dps: 1 },
+          life: 6,
+          poison: { duration: 15, dps: Math.pow(2, spawner.level - 1) },
         });
       }
     },
@@ -2045,6 +2061,7 @@ function updatePlayerStatus(run, delta) {
   if (run.hpDrainRate > 0) {
     applyDamage(run, player, run.hpDrainRate * delta, { silent: true, ignoreInvuln: true });
   }
+  player.spin = (player.spin || 0) + delta * 0.6;
 }
 
 function handleInput(run, delta) {
@@ -2076,9 +2093,9 @@ function handleInput(run, delta) {
     const leash = 180;
     if (nearest < leash) {
       const pct = (leash - nearest) / leash;
-      const slow = Math.max(0.35, 1 - pct * 0.5 * run.paranoia);
-      speed *= slow;
-    }
+    const slow = Math.max(0.65, 1 - pct * 0.2 * run.paranoia);
+    speed *= slow;
+  }
   }
   if (run.shackleLevel > 0) {
     const hpPct = clamp(player.hp / player.hpMax, 0, 1);
@@ -2121,7 +2138,8 @@ function handleInput(run, delta) {
   } else if (player.staminaDelay > 0) {
     player.staminaDelay -= delta;
   } else {
-    const regenRate = player.staminaSlowTimer > 0 ? player.staminaRegen * 0.5 : player.staminaRegen;
+    const regenRate =
+      player.staminaSlowTimer > 0 ? player.staminaRegen * 0.25 : player.staminaRegen;
     player.stamina = Math.min(
       player.staminaMax,
       player.stamina + regenRate * delta,
@@ -2134,6 +2152,9 @@ function applyDamage(run, player, amount, options = {}) {
   const damage = amount * (run.damageTakenMultiplier || 1);
   if (damage <= 0) return;
   player.hp = Math.max(0, player.hp - damage);
+  if (!options.ignoreInvuln && !options.silent) {
+    player.invuln = Math.max(player.invuln, HIT_INVULN);
+  }
   if (!options.silent) {
     player.hurtTimer = 0.4;
     run.flash = Math.min(1, run.flash + 0.25);
@@ -2216,7 +2237,7 @@ document.addEventListener('keyup', (event) => {
 function spawnBullet(run) {
   if (run.bullets.length > BASE_BULLET_CAP) return;
   const edge = randInt(0, 3);
-  const speed = rand(50, 90) * run.bulletSpeed;
+  const speed = rand(65, 117) * run.bulletSpeed;
   let x, y, vx, vy;
   if (edge === 0) {
     x = rand(0, WIDTH);
@@ -2356,6 +2377,39 @@ function spawnLaser(run, level = 1) {
     width,
     damage: 20 + level * 6,
   });
+}
+
+function getLaserEdgeIntersection(origin, dir, length = Math.max(WIDTH, HEIGHT) * 3) {
+  const bounds = [
+    { axis: 'x', value: -20 },
+    { axis: 'x', value: WIDTH + 20 },
+    { axis: 'y', value: -20 },
+    { axis: 'y', value: HEIGHT + 20 },
+  ];
+  const candidates = [];
+  bounds.forEach((bound) => {
+    if (bound.axis === 'x') {
+      if (dir.x === 0) return;
+      const t = (bound.value - origin.x) / dir.x;
+      if (t <= 0) return;
+      const y = origin.y + dir.y * t;
+      if (y >= -20 && y <= HEIGHT + 20) candidates.push({ t, x: bound.value, y });
+    } else {
+      if (dir.y === 0) return;
+      const t = (bound.value - origin.y) / dir.y;
+      if (t <= 0) return;
+      const x = origin.x + dir.x * t;
+      if (x >= -20 && x <= WIDTH + 20) candidates.push({ t, x, y: bound.value });
+    }
+  });
+  if (!candidates.length) {
+    return {
+      x: origin.x + dir.x * length,
+      y: origin.y + dir.y * length,
+    };
+  }
+  candidates.sort((a, b) => a.t - b.t);
+  return candidates[0];
 }
 
 function spawnTileHazard(run, level = 1) {
@@ -2639,9 +2693,9 @@ function applyBulletBehavior(bullet, delta) {
     bullet.osc.phase = (bullet.osc.phase || 0) + bullet.osc.speed * delta;
     const offset = Math.sin(bullet.osc.phase) * bullet.osc.amplitude;
     if (bullet.osc.axis === 'x') {
-      bullet.vx = (bullet.baseVx || bullet.vx) + offset;
+      bullet.vx = (bullet.baseVx ?? bullet.vx) + offset;
     } else {
-      bullet.vy = (bullet.baseVy || bullet.vy) + offset;
+      bullet.vy = (bullet.baseVy ?? bullet.vy) + offset;
     }
   }
   if (bullet.zigzag) {
@@ -2652,15 +2706,15 @@ function applyBulletBehavior(bullet, delta) {
     }
     const magnitude = bullet.zigzag.magnitude * (bullet.zigzag.dir || 1);
     if (bullet.zigzag.axis === 'x') {
-      bullet.vx = (bullet.baseVx || bullet.vx) + magnitude;
+      bullet.vx = (bullet.baseVx ?? bullet.vx) + magnitude;
     } else {
-      bullet.vy = (bullet.baseVy || bullet.vy) + magnitude;
+      bullet.vy = (bullet.baseVy ?? bullet.vy) + magnitude;
     }
   }
   if (bullet.retreat) {
     if (bullet.retreat.originVx === undefined) {
-      bullet.retreat.originVx = bullet.baseVx || bullet.vx;
-      bullet.retreat.originVy = bullet.baseVy || bullet.vy;
+      bullet.retreat.originVx = bullet.baseVx ?? bullet.vx;
+      bullet.retreat.originVy = bullet.baseVy ?? bullet.vy;
     }
     bullet.retreat.timer -= delta;
     if (bullet.retreat.phase === 'advance' && bullet.retreat.timer <= 0) {
@@ -2686,8 +2740,8 @@ function applyBulletBehavior(bullet, delta) {
     } else if (bullet.stopGo.phase === 'idle' && bullet.stopGo.timer <= 0) {
       bullet.stopGo.phase = 'move';
       bullet.stopGo.timer = bullet.stopGo.move;
-      bullet.vx = bullet.baseVx || bullet.vx;
-      bullet.vy = bullet.baseVy || bullet.vy;
+      bullet.vx = bullet.baseVx ?? bullet.vx;
+      bullet.vy = bullet.baseVy ?? bullet.vy;
     }
   }
   if (bullet.wander) {
@@ -2708,10 +2762,10 @@ function applyBulletBehavior(bullet, delta) {
     }
     const magnitude = bullet.squareWave.magnitude * (bullet.squareWave.dir || 1);
     if (bullet.squareWave.axis === 'x') {
-      bullet.vx = bullet.baseVx || bullet.vx;
+      bullet.vx = bullet.baseVx ?? bullet.vx;
       bullet.vy = magnitude;
     } else {
-      bullet.vy = bullet.baseVy || bullet.vy;
+      bullet.vy = bullet.baseVy ?? bullet.vy;
       bullet.vx = magnitude;
     }
   }
@@ -2727,6 +2781,19 @@ function applyBulletBehavior(bullet, delta) {
       bullet.size = size * 2;
     }
   }
+  if (bullet.sizeGrowth) {
+    const key = bullet.sizeGrowth.mode === 'size' ? 'size' : 'radius';
+    const current = bullet[key] || 0;
+    const dir = current < bullet.sizeGrowth.target ? 1 : -1;
+    bullet[key] = current + dir * bullet.sizeGrowth.speed * delta;
+    if (
+      (dir > 0 && bullet[key] >= bullet.sizeGrowth.target) ||
+      (dir < 0 && bullet[key] <= bullet.sizeGrowth.target)
+    ) {
+      bullet[key] = bullet.sizeGrowth.target;
+      delete bullet.sizeGrowth;
+    }
+  }
   if (bullet.gravity) {
     bullet.vy += bullet.gravity * delta;
   }
@@ -2739,6 +2806,12 @@ function applyBulletBehavior(bullet, delta) {
     const normY = bullet.vy / dirSpeed;
     bullet.vx += normX * bullet.accel * delta;
     bullet.vy += normY * bullet.accel * delta;
+  }
+  if (bullet.curve) {
+    const speed = Math.hypot(bullet.vx, bullet.vy) || 1;
+    const angle = Math.atan2(bullet.vy, bullet.vx) + bullet.curve * (bullet.curveDir || 1) * delta;
+    bullet.vx = Math.cos(angle) * speed;
+    bullet.vy = Math.sin(angle) * speed;
   }
 }
 
@@ -2834,6 +2907,18 @@ function updateHazards(run, delta) {
     } else if (hazard.type === 'sniperLaser') {
       if (hazard.telegraph > 0) {
         hazard.telegraph -= delta;
+        if (hazard.telegraph <= 0 && !hazard.endpointBlast) {
+          const tip = getLaserEdgeIntersection(hazard.origin, hazard.direction, hazard.length);
+          spawnRadialBlast(run, {
+            x: tip.x,
+            y: tip.y,
+            radius: 45,
+            warn: 0,
+            duration: 0.6,
+            damage: 12 + (hazard.level || 1) * 2,
+          });
+          hazard.endpointBlast = true;
+        }
       } else {
         hazard.duration -= delta;
         if (hazard.duration <= 0) {
@@ -2851,7 +2936,14 @@ function updateHazards(run, delta) {
       hazard.timer -= delta;
       if (hazard.timer <= 0) {
         hazard.vertices.forEach((vertex) => {
-          spawnRing(run, vertex.x, vertex.y, 6, 150, '#ffe077', 9 + hazard.level);
+          spawnRadialBlast(run, {
+            x: vertex.x,
+            y: vertex.y,
+            radius: 40 + hazard.level * 4,
+            warn: 0,
+            duration: 0.6,
+            damage: 10 + hazard.level,
+          });
         });
         run.hazards.splice(i, 1);
       }
@@ -2874,7 +2966,8 @@ function updateHazards(run, delta) {
       hazard.x += hazard.vx * delta;
       hazard.y += hazard.vy * delta;
       if (hazard.timer <= 0) {
-        spawnRing(run, hazard.x, hazard.y, 10 + hazard.level * 2, 150 + hazard.level * 15, '#ffe682', 9 + hazard.level);
+        const pellets = 6 + hazard.level;
+        spawnRing(run, hazard.x, hazard.y, pellets, 150 + hazard.level * 12, '#ffe682', 8 + hazard.level);
         run.hazards.splice(i, 1);
       }
     } else if (hazard.type === 'dirge') {
@@ -2950,11 +3043,12 @@ function updateHazards(run, delta) {
         hazard.emit -= delta;
         if (hazard.emit <= 0) {
           hazard.emit = 0.12;
-          const count = 10 + hazard.level * 4;
+          const count = 6 + hazard.level * 3;
           for (let j = 0; j < count; j++) {
             if (hazard.axis === 'horizontal') {
               const span = hazard.width / Math.max(1, count - 1);
-              const y = clamp(hazard.position - hazard.width / 2 + span * j, 10, HEIGHT - 10);
+              const base = hazard.position - hazard.width / 2 + span * j;
+              const y = clamp(base + rand(-span * 0.35, span * 0.35), 10, HEIGHT - 10);
               const fromLeft = hazard.side === 'start';
               run.bullets.push({
                 x: fromLeft ? -20 : WIDTH + 20,
@@ -2968,7 +3062,8 @@ function updateHazards(run, delta) {
               });
             } else {
               const span = hazard.width / Math.max(1, count - 1);
-              const x = clamp(hazard.position - hazard.width / 2 + span * j, 10, WIDTH - 10);
+              const base = hazard.position - hazard.width / 2 + span * j;
+              const x = clamp(base + rand(-span * 0.35, span * 0.35), 10, WIDTH - 10);
               const fromTop = hazard.side === 'start';
               run.bullets.push({
                 x,
@@ -3003,6 +3098,8 @@ function updateHazards(run, delta) {
             color: '#ffd977',
             damage: 9 + hazard.level,
             spin: 4,
+            curve: 1.2,
+            curveDir: j % 2 === 0 ? 1 : -1,
           });
         }
         audio.play('bullet');
@@ -3036,7 +3133,7 @@ function updateHazards(run, delta) {
       if (player.invuln <= 0) {
         if (Math.hypot(player.x - hazard.x, player.y - hazard.y) < hazard.currentRadius) {
           player.empTimer = Math.max(player.empTimer, 2);
-          player.empSlow = 0.75;
+          player.empSlow = 0.25;
           player.staminaSlowTimer = Math.max(player.staminaSlowTimer, 2);
         }
       }
@@ -3165,15 +3262,17 @@ function applyChoice(choice, run) {
 function getChoiceOptions(run) {
   const pool = getChoicePool(run);
   const total = Math.min(3, pool.length);
+  const banned = run.lastChoiceIds || [];
+  const filtered = pool.filter((choice) => !banned.includes(choice.id));
+  const source = filtered.length >= total ? filtered : pool;
   const options = new Set();
-  while (options.size < total && pool.length) {
-    options.add(pool[randInt(0, pool.length - 1)]);
-    if (pool.length <= options.size) break;
+  while (options.size < total && source.length) {
+    options.add(source[randInt(0, source.length - 1)]);
+    if (source.length <= options.size) break;
   }
-  if (!options.size) {
-    return CHOICES.slice(0, 3);
-  }
-  return [...options];
+  const picks = options.size ? [...options] : CHOICES.slice(0, total);
+  run.lastChoiceIds = picks.map((choice) => choice.id);
+  return picks;
 }
 
 function getChoicePool(run) {
@@ -3298,12 +3397,16 @@ function drawRun(run) {
     } else if (hazard.type === 'announcer') {
       if (hazard.state === 'warn') {
         ctx.save();
-        ctx.strokeStyle = 'rgba(255,230,140,0.55)';
+        const warnTime = hazard.warnTime || 1;
+        const progress = clamp(1 - hazard.timer / warnTime, 0, 1);
+        const swing = progress < 0.5 ? progress / 0.5 : (1 - progress) / 0.5;
+        const alpha = 0.15 + swing * 0.35;
+        ctx.strokeStyle = `rgba(255,230,140,${alpha + 0.2})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.fillStyle = 'rgba(255,230,140,0.15)';
+        ctx.fillStyle = `rgba(255,230,140,${alpha})`;
         ctx.beginPath();
         ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -3560,6 +3663,7 @@ function drawBulletShape(run, bullet) {
 function drawPlayerShape(player) {
   ctx.save();
   ctx.translate(player.x, player.y);
+  ctx.rotate(player.spin || 0);
   const baseColor = player.hurtTimer > 0 ? '#ff9292' : player.color;
   ctx.fillStyle = baseColor;
   if (player.armorTimer > 0) {

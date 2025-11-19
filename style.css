@@ -144,17 +144,20 @@ canvas {
 
 .hud {
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
   font-family: 'JetBrains Mono', monospace;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.6rem;
   background: rgba(4, 6, 12, 0.82);
   border-radius: 16px;
-  padding: 1rem 1.2rem;
+  padding: 0.8rem 1.4rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 
 .meter {
