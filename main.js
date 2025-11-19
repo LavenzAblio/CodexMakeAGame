@@ -30,7 +30,7 @@ const BASE_SPAWN = 2.45;
 const BASE_SPAWN_ACCEL = 0.0035;
 const CHOICE_INTERVAL = 10;
 const CHOICE_DURATION = 9;
-const HEAL_INTERVAL = 36;
+const HEAL_INTERVAL = 21.6;
 const HEAL_AMOUNT = 12;
 const ARMOR_DURATION = 1;
 const AI_FALLBACK_MS = 30000;
@@ -304,6 +304,274 @@ const CHOICES = [
       run.danger += 0.3 * stack;
     },
   },
+  {
+    id: 'binding',
+    name: '속박',
+    description: '체력이 줄어들수록 이동속도가 조금 빨라지고, 체력이 많을 때는 크게 느려집니다.',
+    apply: (run, stack) => {
+      run.shackleLevel = stack;
+      run.danger += 0.24 * stack;
+    },
+  },
+  {
+    id: 'forkedVolley',
+    name: '분할',
+    description: '3초마다 무작위 투사체를 복제하여 두 갈래로 나갑니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'splitter', createSplitSpawner);
+      spawner.level = stack;
+      run.danger += 0.28 * stack;
+    },
+  },
+  {
+    id: 'wormline',
+    name: '지렁이',
+    description: '9초마다 서로 연결된 사각 지렁이를 소환합니다. 중첩 시 길이가 증가합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'wormline', createWormSpawner);
+      spawner.level = stack;
+      run.danger += 0.33 * stack;
+    },
+  },
+  {
+    id: 'coward',
+    name: '겁쟁이',
+    description: '3.5초마다 잠깐의 경고 뒤 앞으로 나갔다 반대로 되돌아오는 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'coward', createCowardSpawner);
+      spawner.level = stack;
+      run.danger += 0.27 * stack;
+    },
+  },
+  {
+    id: 'foxfire',
+    name: '여우불',
+    description: '4초마다 느리지만 피해가 큰 추적 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'foxfire', createFoxfireSpawner);
+      spawner.level = stack;
+      run.danger += 0.31 * stack;
+    },
+  },
+  {
+    id: 'ironFan',
+    name: '철척',
+    description: '5초마다 화면의 끝에서 일정 각도로 다섯 개의 투사체를 발사합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'ironFan', createIronFanSpawner);
+      spawner.level = stack;
+      run.danger += 0.28 * stack;
+    },
+  },
+  {
+    id: 'charger',
+    name: '돌격자',
+    description: '3초마다 점점 가속하는 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'charger', createChargerSpawner);
+      spawner.level = stack;
+      run.danger += 0.29 * stack;
+    },
+  },
+  {
+    id: 'inflator',
+    name: '거대화',
+    description: '4초마다 무작위 투사체 하나의 크기를 두 배로 키웁니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'inflator', createInflatorSpawner);
+      spawner.level = stack;
+      run.danger += 0.22 * stack;
+    },
+  },
+  {
+    id: 'tidalWave',
+    name: '파도',
+    description: '7초마다 거대한 범위 경고 후 3초간 한 방향으로 탄막을 난사합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'tidalWave', createWaveSpawner);
+      spawner.level = stack;
+      run.danger += 0.36 * stack;
+    },
+  },
+  {
+    id: 'chaosSpiral',
+    name: '혼란',
+    description: '6.5초마다 짧은 경고 후 나선으로 회전하는 점탄을 흩뿌립니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'chaos', createChaosSpawner);
+      spawner.level = stack;
+      run.danger += 0.32 * stack;
+    },
+  },
+  {
+    id: 'aidDelay',
+    name: '지원지연',
+    description: '회복 아이템 소환이 50% 지연됩니다.',
+    apply: (run, stack) => {
+      const prev = run.aidDelayLevel || 0;
+      if (prev) run.healInterval /= Math.pow(1.5, prev);
+      run.aidDelayLevel = stack;
+      run.healInterval *= Math.pow(1.5, run.aidDelayLevel);
+      run.danger += 0.2 * stack;
+    },
+  },
+  {
+    id: 'wanderer',
+    name: '방랑자',
+    description: '7.5초마다 완전히 무작위 궤적으로 움직이는 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'wanderer', createWanderSpawner);
+      spawner.level = stack;
+      run.danger += 0.27 * stack;
+    },
+  },
+  {
+    id: 'deathSentence',
+    name: '사망선고',
+    description: '16초마다 약하게 추적하며 맞으면 치명적인 해골 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'deathSentence', createDeathMarkSpawner);
+      spawner.level = stack;
+      run.danger += 0.4 * stack;
+    },
+  },
+  {
+    id: 'taxCut',
+    name: '탈세',
+    description: '회복 아이템이 50% 빨리 나오지만 2초마다 체력이 1씩 감소합니다.',
+    apply: (run, stack) => {
+      const prev = run.taxLevel || 0;
+      if (prev) run.healInterval /= Math.pow(0.5, prev);
+      run.taxLevel = stack;
+      run.healInterval *= Math.pow(0.5, run.taxLevel);
+      run.hpDrainRate = 0.5 * stack;
+      run.danger += 0.26 * stack;
+    },
+  },
+  {
+    id: 'barrageBloom',
+    name: '탄막폭발',
+    description: '4초마다 무작위 투사체가 있던 위치에 작은 폭발을 일으키며 제거합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'barrageBloom', createBarrageSpawner);
+      spawner.level = stack;
+      run.danger += 0.23 * stack;
+    },
+  },
+  {
+    id: 'venom',
+    name: '맹독',
+    description: '3.5초마다 잠깐의 경고와 함께 맞으면 중독시키는 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'venom', createVenomSpawner);
+      spawner.level = stack;
+      run.danger += 0.3 * stack;
+    },
+  },
+  {
+    id: 'magnifier',
+    name: '확대탄',
+    description: '4.5초마다 점점 커지는 투사체를 소환합니다. 중첩 시 더 자주 나타납니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'magnifier', createMagnifySpawner);
+      spawner.level = stack;
+      run.danger += 0.25 * stack;
+    },
+  },
+  {
+    id: 'preempt',
+    name: '선제공격',
+    description: '4초마다 이동 방향으로 질주 후 작은 폭발을 일으키는 영혼 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'preempt', createPreemptSpawner);
+      spawner.level = stack;
+      run.danger += 0.27 * stack;
+    },
+  },
+  {
+    id: 'chainReaction',
+    name: '연쇄반응',
+    description: '7초마다 여러 원형 경고를 순차적으로 폭발시킵니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'chainReaction', createChainSpawner);
+      spawner.level = stack;
+      run.danger += 0.34 * stack;
+    },
+  },
+  {
+    id: 'pulse',
+    name: '전자펄스',
+    description: '6초마다 느린 펄스 투사체를 소환하며, 주기적으로 느려지는 필드를 남깁니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'pulse', createPulseSpawner);
+      spawner.level = stack;
+      run.danger += 0.31 * stack;
+    },
+  },
+  {
+    id: 'rascal',
+    name: '난봉꾼',
+    description: '9초마다 느리게 회전하며 탄을 뿜어내는 난봉꾼 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'rascal', createRascalSpawner);
+      spawner.level = stack;
+      run.danger += 0.33 * stack;
+    },
+  },
+  {
+    id: 'squareWave',
+    name: '사각파',
+    description: '4초마다 사각파 궤적으로 이동하는 투사체를 발사합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'squareWave', createSquareWaveSpawner);
+      spawner.level = stack;
+      run.danger += 0.26 * stack;
+    },
+  },
+  {
+    id: 'rippletide',
+    name: '윤슬',
+    description: '5초마다 중력을 받아 떨어지는 투사체를 다수 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'rippletide', createRippleSpawner);
+      spawner.level = stack;
+      run.danger += 0.29 * stack;
+    },
+  },
+  {
+    id: 'splitShell',
+    name: '분열탄',
+    description: '6초마다 스스로를 두 번까지 분열하는 투사체를 소환합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'splitShell', createSplitShotSpawner);
+      spawner.level = stack;
+      run.danger += 0.32 * stack;
+    },
+  },
+  {
+    id: 'gravityNet',
+    name: '중력그물',
+    description: '8초마다 주변 투사체를 끌어당기는 그물을 플레이어 주변에 전개합니다.',
+    apply: (run, stack) => {
+      const spawner = ensureSpawner(run, 'gravityNet', createGravityNetSpawner);
+      spawner.level = stack;
+      run.danger += 0.27 * stack;
+    },
+  },
+  {
+    id: 'exile',
+    name: '망명',
+    description: '최대 체력이 15% 증가하지만 기본 투사체의 생성 속도와 속도가 모두 증가합니다.',
+    apply: (run, stack) => {
+      const hpBoost = Math.pow(1.15, stack);
+      run.player.hpMax = Math.round(run.player.hpMax * hpBoost);
+      run.player.hp = Math.min(run.player.hp, run.player.hpMax);
+      run.baseSpawn = Math.max(0.8, run.baseSpawn * Math.pow(0.75, stack));
+      run.spawnRate *= Math.pow(1.1, stack);
+      run.bulletSpeed *= Math.pow(1.1, stack);
+      run.danger += 0.3 * stack;
+    },
+  },
 ];
 const CHOICE_LOOKUP = Object.fromEntries(CHOICES.map((choice) => [choice.id, choice]));
 
@@ -335,6 +603,10 @@ function createPlayer() {
     empTimer: 0,
     empSlow: 0.5,
     lastHitTime: -Infinity,
+    poisonTimer: 0,
+    poisonDamage: 0,
+    poisonAccum: 0,
+    staminaSlowTimer: 0,
   };
 }
 
@@ -367,6 +639,7 @@ function createRun(options = {}) {
     flash: 0,
     rushTrailTimer: 0,
     choicePool: snapshotChoicePool(),
+    healInterval: HEAL_INTERVAL,
     healTimer: HEAL_INTERVAL,
     pickups: [],
     choiceStacks: {},
@@ -377,6 +650,12 @@ function createRun(options = {}) {
     paranoia: 0,
     laserWidthScale: 1,
     dirgeLevel: 0,
+    dirgeCooldown: 0,
+    shackleLevel: 0,
+    hpDrainRate: 0,
+    hpDrainTimer: 0,
+    aidDelayLevel: 0,
+    taxLevel: 0,
   };
 }
 
@@ -622,7 +901,7 @@ function createSniperSpawner() {
       if (spawner.timer <= 0) {
         const angle = rand(0, Math.PI * 2);
         const dir = { x: Math.cos(angle), y: Math.sin(angle) };
-        const length = Math.max(WIDTH, HEIGHT);
+        const length = Math.max(WIDTH, HEIGHT) * 2;
         const origin = {
           x: run.player.x - dir.x * length,
           y: run.player.y - dir.y * length,
@@ -635,6 +914,7 @@ function createSniperSpawner() {
           damage: 25 + spawner.level * 4,
           origin,
           direction: dir,
+          length,
         });
         spawner.timer = 6 / haste;
       }
@@ -826,6 +1106,682 @@ function createLaserStormSpawner() {
   };
   return spawner;
 }
+
+function createSplitSpawner() {
+  const spawner = {
+    id: 'splitter',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 3 / haste;
+        const candidates = run.bullets.filter((b) => !b.warning);
+        if (!candidates.length) return;
+        const source = candidates[randInt(0, candidates.length - 1)];
+        const angle = Math.atan2(source.vy, source.vx);
+        const spread = 0.4 + spawner.level * 0.1;
+        [-spread, spread].forEach((offset) => {
+          const dir = angle + offset;
+          const speed = Math.hypot(source.vx, source.vy) || 120;
+          const clone = duplicateBullet(source, {
+            vx: Math.cos(dir) * speed,
+            vy: Math.sin(dir) * speed,
+          });
+          run.bullets.push(clone);
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createWormSpawner() {
+  const spawner = {
+    id: 'wormline',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.1;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 9 / haste;
+        const segments = 5 + (spawner.level - 1) * 3;
+        const start = getEdgePoint(randInt(0, 3));
+        const angle = rand(0, Math.PI * 2);
+        const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+        const worm = {
+          type: 'worm',
+          level: spawner.level,
+          segments: Array.from({ length: segments }, (_, idx) => ({
+            x: start.x - dir.x * idx * 18,
+            y: start.y - dir.y * idx * 18,
+          })),
+          angle,
+          speed: 45 + spawner.level * 8,
+          blink: 0.35,
+          blinkTimer: 0.35,
+        };
+        run.hazards.push(worm);
+      }
+    },
+  };
+  return spawner;
+}
+
+function createCowardSpawner() {
+  const spawner = {
+    id: 'coward',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.1;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 3.5 / haste;
+        const spot = { x: rand(60, WIDTH - 60), y: rand(60, HEIGHT - 60) };
+        const angle = rand(0, Math.PI * 2);
+        const speed = 160 + spawner.level * 10;
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.35,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius: 5,
+          type: 'circle',
+          color: '#ffe0a3',
+          damage: 9 + spawner.level,
+          retreat: {
+            phase: 'advance',
+            timer: 0.6,
+            pause: 0.3,
+            multiplier: 1.1 + spawner.level * 0.1,
+          },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createFoxfireSpawner() {
+  const spawner = {
+    id: 'foxfire',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 4 / haste;
+        const spot = { x: rand(60, WIDTH - 60), y: rand(60, HEIGHT - 60) };
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.5,
+          vx: rand(-20, 20),
+          vy: rand(-20, 20),
+          radius: 10,
+          type: 'circle',
+          color: '#ffb6ff',
+          damage: 18 + spawner.level * 3,
+          seek: 30 + spawner.level * 5,
+          maxSpeed: 140,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createIronFanSpawner() {
+  const spawner = {
+    id: 'ironFan',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 5 / haste;
+        const originEdge = randInt(0, 3);
+        const origin = getEdgePoint(originEdge);
+        const baseAngle = Math.atan2(HEIGHT / 2 - origin.y, WIDTH / 2 - origin.x);
+        for (let i = 0; i < 5; i++) {
+          const offset = (i - 2) * 0.2;
+          const angle = baseAngle + offset;
+          run.bullets.push({
+            x: origin.x,
+            y: origin.y,
+            vx: Math.cos(angle) * (180 + spawner.level * 12),
+            vy: Math.sin(angle) * (180 + spawner.level * 12),
+            radius: 5,
+            type: 'circle',
+            color: '#ffdede',
+            damage: 11 + spawner.level,
+          });
+        }
+      }
+    },
+  };
+  return spawner;
+}
+
+function createChargerSpawner() {
+  const spawner = {
+    id: 'charger',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.18;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 3 / haste;
+        const edge = randInt(0, 3);
+        const point = getEdgePoint(edge);
+        const angle = Math.atan2(run.player.y - point.y, run.player.x - point.x);
+        run.bullets.push({
+          x: point.x,
+          y: point.y,
+          vx: Math.cos(angle) * 60,
+          vy: Math.sin(angle) * 60,
+          radius: 5,
+          type: 'circle',
+          color: '#f7ff96',
+          damage: 10 + spawner.level,
+          accel: 70 + spawner.level * 8,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createInflatorSpawner() {
+  const spawner = {
+    id: 'inflator',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      spawner.timer -= dt;
+      if (spawner.timer <= 0) {
+        spawner.timer = 4;
+        const candidates = run.bullets.filter((b) => !b.warning);
+        if (!candidates.length) return;
+        const target = candidates[randInt(0, candidates.length - 1)];
+        if (target.radius) target.radius *= 2;
+        if (target.size) target.size *= 2;
+        target.damage *= 1.2;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createWaveSpawner() {
+  const spawner = {
+    id: 'tidalWave',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      spawner.timer -= dt;
+      if (spawner.timer <= 0) {
+        spawner.timer = 7;
+        const axis = Math.random() < 0.5 ? 'horizontal' : 'vertical';
+        const position = axis === 'horizontal' ? rand(80, HEIGHT - 80) : rand(80, WIDTH - 80);
+        run.hazards.push({
+          type: 'wave',
+          axis,
+          position,
+          warn: 1.6,
+          timer: 1.6,
+          duration: 3,
+          level: spawner.level,
+          side: Math.random() < 0.5 ? 'start' : 'end',
+          width: 160 + spawner.level * 20,
+          emit: 0,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createChaosSpawner() {
+  const spawner = {
+    id: 'chaos',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 6.5 / haste;
+        run.hazards.push({
+          type: 'chaosBurst',
+          x: rand(80, WIDTH - 80),
+          y: rand(80, HEIGHT - 80),
+          warn: 0.4,
+          timer: 0.4,
+          level: spawner.level,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createWanderSpawner() {
+  const spawner = {
+    id: 'wanderer',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 7.5 / haste;
+        const spot = { x: rand(60, WIDTH - 60), y: rand(60, HEIGHT - 60) };
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.35,
+          vx: rand(-80, 80),
+          vy: rand(-80, 80),
+          radius: 7,
+          type: 'circle',
+          color: '#b6ffec',
+          damage: 15 + spawner.level,
+          wander: { interval: 0.5, timer: 0.5, speed: 140 },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createDeathMarkSpawner() {
+  const spawner = {
+    id: 'deathSentence',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.05;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 16 / haste;
+        const spot = { x: rand(50, WIDTH - 50), y: rand(50, HEIGHT - 50) };
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.8,
+          vx: rand(-30, 30),
+          vy: rand(-30, 30),
+          radius: 12,
+          type: 'circle',
+          shape: 'skull',
+          color: '#fff1a8',
+          damage: 50,
+          seek: 25,
+          accel: 30,
+          maxSpeed: 260,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createBarrageSpawner() {
+  const spawner = {
+    id: 'barrageBloom',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      spawner.timer -= dt;
+      if (spawner.timer <= 0) {
+        spawner.timer = 4;
+        const target = run.bullets.find((b) => !b.warning);
+        if (!target) return;
+        spawnRadialBlast(run, {
+          x: target.x,
+          y: target.y,
+          radius: 40 + spawner.level * 6,
+          warn: 0.25,
+          damage: 8 + spawner.level,
+        });
+        const idx = run.bullets.indexOf(target);
+        if (idx >= 0) run.bullets.splice(idx, 1);
+      }
+    },
+  };
+  return spawner;
+}
+
+function createVenomSpawner() {
+  const spawner = {
+    id: 'venom',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 3.5 / haste;
+        const spot = { x: rand(60, WIDTH - 60), y: rand(60, HEIGHT - 60) };
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.35,
+          vx: rand(-40, 40),
+          vy: rand(-40, 40),
+          radius: 6,
+          type: 'circle',
+          color: '#9aff9a',
+          damage: 6 + spawner.level,
+          life: 4,
+          poison: { duration: 10, dps: 1 },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createMagnifySpawner() {
+  const spawner = {
+    id: 'magnifier',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const base = Math.max(0.8, 1 - (spawner.level - 1) * 0.08);
+      spawner.timer -= dt * base;
+      if (spawner.timer <= 0) {
+        spawner.timer = 4.5 * base;
+        const spot = { x: rand(50, WIDTH - 50), y: rand(50, HEIGHT - 50) };
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.4,
+          vx: rand(-30, 30),
+          vy: rand(-30, 30),
+          radius: 5,
+          type: 'circle',
+          color: '#d2f0ff',
+          damage: 8 + spawner.level,
+          growth: {
+            grow: true,
+            speed: 0.8 + spawner.level * 0.1,
+            min: 6,
+            max: 24 + spawner.level * 3,
+          },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createPreemptSpawner() {
+  const spawner = {
+    id: 'preempt',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      spawner.timer -= dt;
+      if (spawner.timer <= 0) {
+        spawner.timer = 4;
+        run.hazards.push({
+          type: 'preemptStrike',
+          x: run.player.x,
+          y: run.player.y,
+          dir: { ...run.player.lastDir },
+          life: 1,
+          level: spawner.level,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createChainSpawner() {
+  const spawner = {
+    id: 'chainReaction',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      spawner.timer -= dt;
+      if (spawner.timer <= 0) {
+        spawner.timer = 7;
+        const bursts = 6 + (spawner.level - 1) * 4;
+        const hazard = {
+          type: 'chain',
+          events: Array.from({ length: bursts }, () => ({
+            x: rand(60, WIDTH - 60),
+            y: rand(60, HEIGHT - 60),
+          })),
+          index: 0,
+          timer: 0.25,
+          level: spawner.level,
+        };
+        run.hazards.push(hazard);
+      }
+    },
+  };
+  return spawner;
+}
+
+function createPulseSpawner() {
+  const spawner = {
+    id: 'pulse',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 6 / haste;
+        const spot = { x: rand(70, WIDTH - 70), y: rand(70, HEIGHT - 70) };
+        run.bullets.push({
+          x: spot.x,
+          y: spot.y,
+          spawnX: spot.x,
+          spawnY: spot.y,
+          warning: 0.3,
+          vx: rand(-20, 20),
+          vy: rand(-20, 20),
+          radius: 10,
+          type: 'circle',
+          color: '#9be1ff',
+          damage: 6,
+          pulse: {
+            interval: 1.5,
+            timer: 1.5,
+            radius: 90 + spawner.level * 10,
+            slow: 0.25,
+            duration: 1,
+          },
+          life: 6,
+          speed: 20,
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createRascalSpawner() {
+  const spawner = {
+    id: 'rascal',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      spawner.timer -= dt;
+      if (spawner.timer <= 0) {
+        spawner.timer = 9;
+        const point = getEdgePoint(randInt(0, 3));
+        const dir = Math.atan2(run.player.y - point.y, run.player.x - point.x);
+        run.bullets.push({
+          x: point.x,
+          y: point.y,
+          vx: Math.cos(dir) * 60,
+          vy: Math.sin(dir) * 60,
+          radius: 12,
+          type: 'circle',
+          color: '#ffdf9c',
+          damage: 14 + spawner.level,
+          spin: 1.5,
+          rascalShots: {
+            timer: 0.5,
+            interval: 0.5,
+            speed: 260,
+          },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSquareWaveSpawner() {
+  const spawner = {
+    id: 'squareWave',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 4 / haste;
+        const edge = randInt(0, 3);
+        const point = getEdgePoint(edge);
+        const angle = Math.atan2(run.player.y - point.y, run.player.x - point.x);
+        run.bullets.push({
+          x: point.x,
+          y: point.y,
+          vx: Math.cos(angle) * 140,
+          vy: Math.sin(angle) * 140,
+          radius: 6,
+          type: 'circle',
+          color: '#d6b6ff',
+          damage: 10 + spawner.level,
+          squareWave: {
+            axis: Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle)) ? 'y' : 'x',
+            magnitude: 160,
+            interval: 0.4,
+            timer: 0.4,
+            dir: 1,
+          },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createRippleSpawner() {
+  const spawner = {
+    id: 'rippletide',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.1;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 5 / haste;
+        const count = 7 + spawner.level * 3;
+        for (let i = 0; i < count; i++) {
+          const x = rand(40, WIDTH - 40);
+          run.bullets.push({
+            x,
+            y: -20 - i * 10,
+            vx: rand(-10, 10),
+            vy: 20,
+            radius: 6,
+            type: 'circle',
+            color: '#9fe3ff',
+            damage: 11,
+            gravity: 90,
+          });
+        }
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSplitShotSpawner() {
+  const spawner = {
+    id: 'splitShell',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 6 / haste;
+        const edge = randInt(0, 3);
+        const point = getEdgePoint(edge);
+        const angle = Math.atan2(run.player.y - point.y, run.player.x - point.x);
+        run.bullets.push({
+          x: point.x,
+          y: point.y,
+          vx: Math.cos(angle) * 110,
+          vy: Math.sin(angle) * 110,
+          radius: 6,
+          type: 'circle',
+          color: '#ffbbaa',
+          damage: 8 + spawner.level,
+          split: {
+            interval: 2,
+            timer: 2,
+            count: 2,
+            spread: 0.4,
+          },
+        });
+      }
+    },
+  };
+  return spawner;
+}
+
+function createGravityNetSpawner() {
+  const spawner = {
+    id: 'gravityNet',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.1;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        spawner.timer = 8 / haste;
+        run.hazards.push({
+          type: 'gravityNet',
+          x: run.player.x,
+          y: run.player.y,
+          timer: 3 + spawner.level,
+          strength: 40 + spawner.level * 10,
+        });
+      }
+    },
+  };
+  return spawner;
+}
 function getEdgePoint(edge) {
   switch (edge) {
     case 0:
@@ -877,6 +1833,30 @@ function spawnRadialBlast(run, { x, y, radius, warn = 0, duration = 1.2, damage 
   }
   run.hazards.push(blast);
   return blast;
+}
+
+function spawnSlowZone(run, { x, y, radius, duration, slow }) {
+  run.hazards.push({
+    type: 'slowZone',
+    x,
+    y,
+    radius,
+    timer: duration,
+    duration,
+    slow,
+  });
+}
+
+function triggerDirgeStorm(run) {
+  if (!run || run.dirgeLevel <= 0) return;
+  run.hazards.push({
+    type: 'dirge',
+    timer: 6,
+    emit: 0.35,
+    angle: 0,
+    level: run.dirgeLevel,
+  });
+  run.dirgeCooldown = 7;
 }
 
 function startSolo() {
@@ -1010,11 +1990,15 @@ function updateRun(run, delta) {
 
   run.time += delta;
   run.nextChoice -= delta;
+  if (run.dirgeCooldown > 0) {
+    run.dirgeCooldown = Math.max(0, run.dirgeCooldown - delta);
+  }
   handleInput(run, delta);
   updateBullets(run, delta);
   updateHazards(run, delta);
   updatePickups(run, delta);
   updateEffects(run, delta);
+  updatePlayerStatus(run, delta);
   if (run.flash > 0) {
     run.flash = Math.max(0, run.flash - delta);
   }
@@ -1025,7 +2009,7 @@ function updateRun(run, delta) {
     run.healTimer -= delta;
   } else {
     spawnHealPickup(run);
-    run.healTimer = HEAL_INTERVAL;
+    run.healTimer = run.healInterval;
   }
 
   run.spawnTimer -= delta * run.spawnRate;
@@ -1039,6 +2023,27 @@ function updateRun(run, delta) {
   if (run.nextChoice <= 0 && !state.awaitingChoice) {
     run.nextChoice = run.choiceInterval;
     presentChoices(run);
+  }
+}
+
+function updatePlayerStatus(run, delta) {
+  const player = run.player;
+  if (!player) return;
+  if (player.poisonTimer > 0) {
+    player.poisonTimer = Math.max(0, player.poisonTimer - delta);
+    player.poisonAccum = (player.poisonAccum || 0) + delta;
+    const tick = player.poisonDamage || 0;
+    while (tick > 0 && player.poisonAccum >= 1) {
+      applyDamage(run, player, tick, { silent: true, ignoreInvuln: true });
+      player.poisonAccum -= 1;
+    }
+    if (player.poisonTimer <= 0) {
+      player.poisonDamage = 0;
+      player.poisonAccum = 0;
+    }
+  }
+  if (run.hpDrainRate > 0) {
+    applyDamage(run, player, run.hpDrainRate * delta, { silent: true, ignoreInvuln: true });
   }
 }
 
@@ -1059,6 +2064,9 @@ function handleInput(run, delta) {
 
   const rushing = (keys.has('ShiftLeft') || keys.has('ShiftRight')) && len > 0;
   let speed = player.speed * player.speedMultiplier;
+  if (player.staminaSlowTimer > 0) {
+    player.staminaSlowTimer = Math.max(0, player.staminaSlowTimer - delta);
+  }
   if (player.empTimer > 0) {
     player.empTimer = Math.max(0, player.empTimer - delta);
     speed *= player.empSlow;
@@ -1071,6 +2079,13 @@ function handleInput(run, delta) {
       const slow = Math.max(0.35, 1 - pct * 0.5 * run.paranoia);
       speed *= slow;
     }
+  }
+  if (run.shackleLevel > 0) {
+    const hpPct = clamp(player.hp / player.hpMax, 0, 1);
+    const fast = 1 + 0.25 * run.shackleLevel;
+    const slow = Math.max(0.35, 1 - 0.4 * run.shackleLevel);
+    const modifier = fast + (slow - fast) * hpPct;
+    speed *= modifier;
   }
   let spending = false;
   if (rushing && player.stamina > 0) {
@@ -1106,11 +2121,44 @@ function handleInput(run, delta) {
   } else if (player.staminaDelay > 0) {
     player.staminaDelay -= delta;
   } else {
+    const regenRate = player.staminaSlowTimer > 0 ? player.staminaRegen * 0.5 : player.staminaRegen;
     player.stamina = Math.min(
       player.staminaMax,
-      player.stamina + player.staminaRegen * delta,
+      player.stamina + regenRate * delta,
     );
   }
+}
+
+function applyDamage(run, player, amount, options = {}) {
+  if (!player || (!options.ignoreInvuln && player.invuln > 0)) return;
+  const damage = amount * (run.damageTakenMultiplier || 1);
+  if (damage <= 0) return;
+  player.hp = Math.max(0, player.hp - damage);
+  if (!options.silent) {
+    player.hurtTimer = 0.4;
+    run.flash = Math.min(1, run.flash + 0.25);
+    audio.play('hurt');
+    addEffect(run, {
+      type: 'hurt',
+      x: player.x,
+      y: player.y,
+      ttl: 0.35,
+      radius: player.radius + 6,
+    });
+  }
+  if (!options.silent) {
+    const now = run.time || 0;
+    if (run.dirgeLevel > 0 && run.dirgeCooldown <= 0 && now - player.lastHitTime <= 3) {
+      triggerDirgeStorm(run);
+    }
+    player.lastHitTime = now;
+  }
+}
+
+function applyPoison(player, duration, damagePerSecond) {
+  player.poisonTimer = Math.max(player.poisonTimer || 0, duration);
+  player.poisonDamage = Math.max(damagePerSecond, player.poisonDamage || 0);
+  player.poisonAccum = 0;
 }
 
 function tryDash() {
@@ -1245,6 +2293,23 @@ function spawnBullet(run) {
       });
     }
   }
+}
+
+function duplicateBullet(bullet, overrides = {}) {
+  const clone = { ...bullet, ...overrides };
+  if (bullet.osc) clone.osc = { ...bullet.osc };
+  if (bullet.zigzag) clone.zigzag = { ...bullet.zigzag };
+  if (bullet.retreat) clone.retreat = { ...bullet.retreat };
+  if (bullet.stopGo) clone.stopGo = { ...bullet.stopGo };
+  if (bullet.growth) clone.growth = { ...bullet.growth };
+  if (bullet.pulse) clone.pulse = { ...bullet.pulse };
+  if (bullet.squareWave) clone.squareWave = { ...bullet.squareWave };
+  clone.warning = 0;
+  clone.spawnX = undefined;
+  clone.spawnY = undefined;
+  clone.baseVx = undefined;
+  clone.baseVy = undefined;
+  return clone;
 }
 
 function explodeBullet(run, bullet) {
@@ -1433,6 +2498,39 @@ function updateBullets(run, delta) {
       bullet.baseVy = bullet.vy;
     }
     applyBulletBehavior(bullet, delta);
+    if (bullet.pulse) {
+      bullet.pulse.timer -= delta;
+      if (bullet.pulse.timer <= 0) {
+        bullet.pulse.timer += bullet.pulse.interval;
+        spawnSlowZone(run, {
+          x: bullet.x,
+          y: bullet.y,
+          radius: bullet.pulse.radius,
+          duration: bullet.pulse.duration,
+          slow: bullet.pulse.slow,
+        });
+      }
+    }
+    if (bullet.rascalShots) {
+      bullet.rascalShots.timer -= delta;
+      if (bullet.rascalShots.timer <= 0) {
+        bullet.rascalShots.timer += bullet.rascalShots.interval;
+        const dir = Math.atan2(bullet.vy, bullet.vx);
+        run.bullets.push({
+          x: bullet.x,
+          y: bullet.y,
+          spawnX: bullet.x,
+          spawnY: bullet.y,
+          warning: 0.2,
+          vx: Math.cos(dir) * bullet.rascalShots.speed,
+          vy: Math.sin(dir) * bullet.rascalShots.speed,
+          radius: 4,
+          type: 'circle',
+          color: '#ffd38f',
+          damage: 7,
+        });
+      }
+    }
     if (run.gravityPull && !bullet.ignoreGravity) {
       const dx = player.x - bullet.x;
       const dy = player.y - bullet.y;
@@ -1455,6 +2553,26 @@ function updateBullets(run, delta) {
     }
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
+    if (bullet.split && bullet.split.count > 0) {
+      bullet.split.timer -= delta;
+      if (bullet.split.timer <= 0) {
+        bullet.split.count -= 1;
+        bullet.split.timer += bullet.split.interval;
+        const angle = Math.atan2(bullet.vy, bullet.vx);
+        const spread = bullet.split.spread || 0.4;
+        const speed = Math.hypot(bullet.vx, bullet.vy) || 100;
+        const template = { ...bullet.split };
+        [-spread, spread].forEach((offset) => {
+          const dir = angle + offset;
+          const clone = duplicateBullet(bullet, {
+            vx: Math.cos(dir) * speed,
+            vy: Math.sin(dir) * speed,
+          });
+          if (clone.split) clone.split = { ...template };
+          run.bullets.push(clone);
+        });
+      }
+    }
     if (bullet.impactBlast && bullet.y >= (bullet.impactBlast.triggerY || (bullet.impactBlast.y || HEIGHT - 20))) {
       spawnRadialBlast(run, {
         x: bullet.x,
@@ -1493,6 +2611,9 @@ function updateBullets(run, delta) {
       const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
       if (dist < effectiveRadius + player.radius) {
         applyDamage(run, player, bullet.damage);
+        if (bullet.poison) {
+          applyPoison(player, bullet.poison.duration, bullet.poison.dps);
+        }
         explodeBullet(run, bullet);
         run.bullets.splice(i, 1);
       }
@@ -1503,6 +2624,9 @@ function updateBullets(run, delta) {
         Math.abs(bullet.y - player.y) < effectiveSize / 2 + player.radius
       ) {
         applyDamage(run, player, bullet.damage);
+        if (bullet.poison) {
+          applyPoison(player, bullet.poison.duration, bullet.poison.dps);
+        }
         explodeBullet(run, bullet);
         run.bullets.splice(i, 1);
       }
@@ -1564,6 +2688,31 @@ function applyBulletBehavior(bullet, delta) {
       bullet.stopGo.timer = bullet.stopGo.move;
       bullet.vx = bullet.baseVx || bullet.vx;
       bullet.vy = bullet.baseVy || bullet.vy;
+    }
+  }
+  if (bullet.wander) {
+    bullet.wander.timer -= delta;
+    if (bullet.wander.timer <= 0) {
+      bullet.wander.timer += bullet.wander.interval;
+      const angle = rand(0, Math.PI * 2);
+      const speed = bullet.wander.speed || Math.hypot(bullet.vx, bullet.vy) || 120;
+      bullet.vx = Math.cos(angle) * speed;
+      bullet.vy = Math.sin(angle) * speed;
+    }
+  }
+  if (bullet.squareWave) {
+    bullet.squareWave.timer -= delta;
+    if (bullet.squareWave.timer <= 0) {
+      bullet.squareWave.timer += bullet.squareWave.interval;
+      bullet.squareWave.dir = -(bullet.squareWave.dir || 1);
+    }
+    const magnitude = bullet.squareWave.magnitude * (bullet.squareWave.dir || 1);
+    if (bullet.squareWave.axis === 'x') {
+      bullet.vx = bullet.baseVx || bullet.vx;
+      bullet.vy = magnitude;
+    } else {
+      bullet.vy = bullet.baseVy || bullet.vy;
+      bullet.vx = magnitude;
     }
   }
   if (bullet.growth) {
@@ -1751,6 +2900,176 @@ function updateHazards(run, delta) {
         }
         audio.play('bullet');
       }
+      if (hazard.timer <= 0) {
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'worm') {
+      hazard.angle += rand(-0.8, 0.8) * delta;
+      const dirX = Math.cos(hazard.angle);
+      const dirY = Math.sin(hazard.angle);
+      const head = hazard.segments[0];
+      head.x += dirX * hazard.speed * delta;
+      head.y += dirY * hazard.speed * delta;
+      for (let j = 1; j < hazard.segments.length; j++) {
+        const prev = hazard.segments[j - 1];
+        const seg = hazard.segments[j];
+        seg.x += (prev.x - seg.x) * 5 * delta;
+        seg.y += (prev.y - seg.y) * 5 * delta;
+      }
+      hazard.blinkTimer -= delta;
+      if (hazard.blinkTimer <= 0) {
+        hazard.blinkTimer += hazard.blink;
+        hazard.visible = !hazard.visible;
+      }
+      if (
+        head.x < -80 ||
+        head.x > WIDTH + 80 ||
+        head.y < -80 ||
+        head.y > HEIGHT + 80
+      ) {
+        run.hazards.splice(i, 1);
+        continue;
+      }
+      if ((hazard.visible ?? true) && player.invuln <= 0) {
+        for (let j = 0; j < hazard.segments.length; j++) {
+          if (Math.hypot(player.x - hazard.segments[j].x, player.y - hazard.segments[j].y) < 18) {
+            applyDamage(run, player, 10 + hazard.level);
+            break;
+          }
+        }
+      }
+    } else if (hazard.type === 'wave') {
+      if (hazard.warn > 0) {
+        hazard.warn -= delta;
+        if (hazard.warn <= 0) {
+          hazard.timer = hazard.duration;
+          hazard.emit = 0;
+        }
+      } else {
+        hazard.timer -= delta;
+        hazard.emit -= delta;
+        if (hazard.emit <= 0) {
+          hazard.emit = 0.12;
+          const count = 10 + hazard.level * 4;
+          for (let j = 0; j < count; j++) {
+            if (hazard.axis === 'horizontal') {
+              const span = hazard.width / Math.max(1, count - 1);
+              const y = clamp(hazard.position - hazard.width / 2 + span * j, 10, HEIGHT - 10);
+              const fromLeft = hazard.side === 'start';
+              run.bullets.push({
+                x: fromLeft ? -20 : WIDTH + 20,
+                y,
+                vx: (fromLeft ? 1 : -1) * (260 + hazard.level * 20),
+                vy: 0,
+                radius: 4,
+                type: 'circle',
+                color: '#8cd1ff',
+                damage: 9 + hazard.level,
+              });
+            } else {
+              const span = hazard.width / Math.max(1, count - 1);
+              const x = clamp(hazard.position - hazard.width / 2 + span * j, 10, WIDTH - 10);
+              const fromTop = hazard.side === 'start';
+              run.bullets.push({
+                x,
+                y: fromTop ? -20 : HEIGHT + 20,
+                vx: 0,
+                vy: (fromTop ? 1 : -1) * (260 + hazard.level * 20),
+                radius: 4,
+                type: 'circle',
+                color: '#8cd1ff',
+                damage: 9 + hazard.level,
+              });
+            }
+          }
+        }
+        if (hazard.timer <= 0) {
+          run.hazards.splice(i, 1);
+        }
+      }
+    } else if (hazard.type === 'chaosBurst') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        const count = 4 + hazard.level * 2;
+        for (let j = 0; j < count; j++) {
+          const angle = (Math.PI * 2 * j) / count;
+          run.bullets.push({
+            x: hazard.x,
+            y: hazard.y,
+            vx: Math.cos(angle) * (120 + hazard.level * 12),
+            vy: Math.sin(angle) * (120 + hazard.level * 12),
+            radius: 4,
+            type: 'circle',
+            color: '#ffd977',
+            damage: 9 + hazard.level,
+            spin: 4,
+          });
+        }
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'chain') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        if (hazard.index >= hazard.events.length) {
+          run.hazards.splice(i, 1);
+          continue;
+        }
+        const point = hazard.events[hazard.index];
+        hazard.index += 1;
+        spawnRadialBlast(run, {
+          x: point.x,
+          y: point.y,
+          radius: 35 + hazard.level * 5,
+          warn: 0.3,
+          damage: 8 + hazard.level,
+        });
+        hazard.timer = 0.25;
+      }
+    } else if (hazard.type === 'slowZone') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        run.hazards.splice(i, 1);
+        continue;
+      }
+      hazard.currentRadius = hazard.radius * (hazard.timer / hazard.duration);
+      if (player.invuln <= 0) {
+        if (Math.hypot(player.x - hazard.x, player.y - hazard.y) < hazard.currentRadius) {
+          player.empTimer = Math.max(player.empTimer, 2);
+          player.empSlow = 0.75;
+          player.staminaSlowTimer = Math.max(player.staminaSlowTimer, 2);
+        }
+      }
+    } else if (hazard.type === 'preemptStrike') {
+      const dir = hazard.dir && (hazard.dir.x || hazard.dir.y)
+        ? hazard.dir
+        : { x: 1, y: 0 };
+      const len = Math.hypot(dir.x, dir.y) || 1;
+      const norm = { x: dir.x / len, y: dir.y / len };
+      hazard.x += norm.x * 220 * delta;
+      hazard.y += norm.y * 220 * delta;
+      hazard.life -= delta;
+      if (hazard.life <= 0) {
+        spawnRadialBlast(run, {
+          x: hazard.x,
+          y: hazard.y,
+          radius: 40 + hazard.level * 5,
+          damage: 7 + hazard.level,
+          warn: 0.2,
+        });
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'gravityNet') {
+      hazard.timer -= delta;
+      run.bullets.forEach((bullet) => {
+        if (bullet.warning > 0) return;
+        const dx = hazard.x - bullet.x;
+        const dy = hazard.y - bullet.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const pull = (hazard.strength / dist) * delta;
+        bullet.vx += (dx / dist) * pull;
+        bullet.vy += (dy / dist) * pull;
+      });
       if (hazard.timer <= 0) {
         run.hazards.splice(i, 1);
       }
@@ -2001,7 +3320,7 @@ function drawRun(run) {
       ctx.strokeStyle = hazard.telegraph > 0 ? 'rgba(255,255,255,0.2)' : '#ff7c7c';
       ctx.lineWidth = hazard.width * 2;
       ctx.beginPath();
-      const length = Math.max(WIDTH, HEIGHT) * 1.5;
+      const length = hazard.length || Math.max(WIDTH, HEIGHT) * 2.5;
       ctx.moveTo(
         hazard.origin.x - hazard.direction.x * length,
         hazard.origin.y - hazard.direction.y * length,
@@ -2039,6 +3358,61 @@ function drawRun(run) {
       ctx.beginPath();
       ctx.arc(WIDTH / 2, HEIGHT / 2, 26 + hazard.level * 6, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (hazard.type === 'worm') {
+      ctx.fillStyle = (hazard.visible ?? true) ? 'rgba(255,120,120,0.5)' : 'rgba(255,255,255,0.15)';
+      hazard.segments.forEach((seg) => {
+        ctx.fillRect(seg.x - 10, seg.y - 10, 20, 20);
+      });
+    } else if (hazard.type === 'wave') {
+      ctx.fillStyle = 'rgba(140,209,255,0.15)';
+      if (hazard.warn > 0) {
+        ctx.strokeStyle = 'rgba(140,209,255,0.35)';
+        ctx.lineWidth = 4;
+      } else {
+        ctx.strokeStyle = 'rgba(140,209,255,0.6)';
+        ctx.lineWidth = 2;
+      }
+      if (hazard.axis === 'horizontal') {
+        ctx.strokeRect(0, hazard.position - hazard.width / 2, WIDTH, hazard.width);
+        ctx.fillRect(0, hazard.position - hazard.width / 2, WIDTH, hazard.width);
+      } else {
+        ctx.strokeRect(hazard.position - hazard.width / 2, 0, hazard.width, HEIGHT);
+        ctx.fillRect(hazard.position - hazard.width / 2, 0, hazard.width, HEIGHT);
+      }
+    } else if (hazard.type === 'chaosBurst') {
+      ctx.strokeStyle = 'rgba(255,217,119,0.4)';
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 24 + hazard.level * 4, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (hazard.type === 'chain') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      hazard.events.forEach((point, idx) => {
+        if (idx < hazard.index) return;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    } else if (hazard.type === 'slowZone') {
+      const radius = hazard.currentRadius || hazard.radius;
+      ctx.fillStyle = 'rgba(120,170,255,0.15)';
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (hazard.type === 'preemptStrike') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 3;
+      const dir = hazard.dir && (hazard.dir.x || hazard.dir.y) ? hazard.dir : { x: 1, y: 0 };
+      ctx.beginPath();
+      ctx.moveTo(hazard.x, hazard.y);
+      ctx.lineTo(hazard.x - dir.x * 12, hazard.y - dir.y * 12);
+      ctx.stroke();
+    } else if (hazard.type === 'gravityNet') {
+      ctx.strokeStyle = 'rgba(180,255,255,0.3)';
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 50, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
   });
   if (run.pickups) {
@@ -2150,6 +3524,22 @@ function drawBulletShape(run, bullet) {
       ctx.fillRect(-head / 2, -head / 2, head, head);
       ctx.fillRect(-handle / 2, head / 2 - handle / 2, handle, size);
       ctx.restore();
+      break;
+    }
+    case 'skull': {
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#05070c';
+      ctx.beginPath();
+      ctx.arc(-radius / 3, -radius / 4, radius / 6, 0, Math.PI * 2);
+      ctx.arc(radius / 3, -radius / 4, radius / 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(-radius / 3, radius / 4, (radius * 2) / 3, radius / 4);
+      ctx.restore();
+      ctx.fillStyle = color;
       break;
     }
     case 'square': {
