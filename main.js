@@ -64,635 +64,247 @@ const audio = createAudioSuite();
 
 const CHOICES = [
   {
-    id: 'idolTragedy',
-    name: 'Idol Tragedy',
-    description:
-      'You move quicker, but every encore dials bullets faster and denser. Stacks raise both extremes.',
+    id: 'hasteRush',
+    name: '성급함',
+    description: '당신의 이동속도가 10% 빨라지지만, 투사체의 속도가 40% 증가합니다.',
     apply: (run, stack) => {
-      run.player.speedMultiplier *= 1.08;
-      const surge = 1.25 + (stack - 1) * 0.12;
-      run.bulletSpeed *= surge;
-      run.spawnRate *= surge;
-      run.danger += 0.3 + stack * 0.05;
+      const speedBoost = Math.pow(1.1, stack);
+      const projectileBoost = Math.pow(1.4, stack);
+      run.player.speedMultiplier *= speedBoost;
+      run.bulletSpeed *= projectileBoost;
+      run.spawnRate *= projectileBoost;
+      run.danger += 0.3 * stack;
     },
   },
   {
-    id: 'laserChaos',
-    name: 'Laser Chaos',
-    description: 'Rapid beam walls telegraph briefly then sear straight lines. More stacks mean more beams.',
+    id: 'beamline',
+    name: '광선',
+    description: '3.5초마다 경고 후 무작위 위치에 레이저를 소환합니다. 중첩 시 한 번에 더 많은 레이저가 나타납니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'laser', createLaserSpawner);
+      const spawner = ensureSpawner(run, 'beamline', createBeamlineSpawner);
       spawner.level = stack;
-      run.danger += 0.35 + stack * 0.05;
+      run.danger += 0.35 * stack;
     },
   },
   {
-    id: 'staminaLeak',
-    name: 'Stamina Leak',
-    description: 'Rush drain and regen penalties stack, though max stamina creeps upward.',
+    id: 'awkwardGreeting',
+    name: '불성인사',
+    description: '최대 스태미나가 10% 증가하지만 회복 속도가 40% 느려집니다.',
     apply: (run, stack) => {
-      run.player.staminaMax += 8;
+      const gain = Math.pow(1.1, stack);
+      const penalty = Math.pow(0.6, stack);
+      run.player.staminaMax = Math.floor(run.player.staminaMax * gain);
       run.player.stamina = Math.min(run.player.stamina, run.player.staminaMax);
-      run.player.staminaRegen *= 0.55;
-      run.player.rushDrain *= 1.2;
-      if (stack > 1) {
-        run.player.staminaRegen *= 0.8;
-        run.player.rushDrain *= 1.1;
-      }
-      run.danger += 0.22 + stack * 0.03;
+      run.player.staminaRegen *= penalty;
+      run.danger += 0.18 * stack;
     },
   },
   {
-    id: 'tilePhantom',
-    name: 'Phantom Tiles',
-    description: 'Blinking squares slam down anywhere. Extra stacks widen and quicken the pattern.',
+    id: 'roadblock',
+    name: '길막음',
+    description: '5초마다 깜빡이는 사각 장벽을 무작위 위치에 소환합니다. 중첩 시 장벽이 커집니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'tile', createTileSpawner);
+      const spawner = ensureSpawner(run, 'roadblock', createRoadblockSpawner);
       spawner.level = stack;
-      run.danger += 0.3 + stack * 0.04;
+      run.danger += 0.28 * stack;
     },
   },
   {
-    id: 'mirrorBloom',
-    name: 'Mirror Bloom',
-    description: 'Random bullets duplicate into mirrored twins. Each stack lowers the interval.',
+    id: 'pressure',
+    name: '압박',
+    description: '모든 투사체의 크기가 30% 증가합니다.',
     apply: (run, stack) => {
-      run.mirrorBloom = true;
-      run.mirrorBloomLevel = stack;
-      run.player.dashCooldownBase *= 1.12;
-      run.danger += 0.26 + stack * 0.05;
+      run.bulletScale = Math.pow(1.3, stack);
+      run.danger += 0.32 * stack;
     },
   },
   {
-    id: 'gravityFlood',
-    name: 'Gravity Flood',
-    description: 'All projectiles swell and arc toward you. Stacks intensify the pull.',
+    id: 'gravityField',
+    name: '중력장',
+    description: '투사체가 약하게 당신에게 끌려옵니다.',
     apply: (run, stack) => {
-      run.gravityPull = stack;
-      run.player.dashDistance = Math.max(70, run.player.dashDistance * 0.85);
-      run.danger += 0.33 + stack * 0.06;
+      run.gravityPull = 0.8 + (stack - 1) * 0.3;
+      run.danger += 0.25 * stack;
     },
   },
   {
-    id: 'shardStorm',
-    name: 'Shard Storm',
-    description: 'Telegraphed bursts seed plus-mark warnings before firing radial shards.',
+    id: 'pelletBurst',
+    name: '점탄폭발',
+    description: '4초마다 짧은 경고 후 점탄을 흩뿌립니다. 중첩 시 더 많은 점탄이 나옵니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'shard', createShardSpawner);
+      const spawner = ensureSpawner(run, 'pelletBurst', createPelletBurstSpawner);
       spawner.level = stack;
-      run.danger += 0.28 + stack * 0.05;
+      run.danger += 0.3 * stack;
     },
   },
   {
-    id: 'voidHiss',
-    name: 'Void Hiss',
-    description: 'Choice timers shrink and your maximum HP drops with each whisper.',
+    id: 'chronicFatigue',
+    name: '만성피로',
+    description: '피해가 15% 증가하고 저주 선택 시간이 20% 줄어듭니다.',
     apply: (run, stack) => {
-      run.choiceInterval = Math.max(8, run.choiceInterval * 0.9);
-      run.player.hpMax = Math.max(20, run.player.hpMax - 8);
-      run.player.hp = Math.min(run.player.hp, run.player.hpMax);
-      run.danger += 0.24 + stack * 0.04;
+      run.damageTakenMultiplier = Math.pow(1.15, stack);
+      run.choiceInterval = Math.max(6, (run.baseChoiceInterval || CHOICE_INTERVAL) * Math.pow(0.8, stack));
+      run.nextChoice = Math.min(run.nextChoice, run.choiceInterval);
+      run.danger += 0.24 * stack;
     },
   },
   {
-    id: 'haloDrift',
-    name: 'Halo Drift',
-    description: 'Orbiting emitters lob beads around you. Extra stacks add emitters.',
+    id: 'empField',
+    name: '전자파',
+    description: '7초마다 2초 간 이동속도가 50% 감소합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'halo', createHaloSpawner);
+      const spawner = ensureSpawner(run, 'emp', createEmpSpawner);
       spawner.level = stack;
-      run.danger += 0.32 + stack * 0.05;
+      run.danger += 0.22 * stack;
     },
   },
   {
-    id: 'meteorRain',
-    name: 'Meteor Rain',
-    description: 'Heavy blocks fall with short warnings. Stacks drop more at once.',
+    id: 'herald',
+    name: '알리미',
+    description: '3초마다 경고 원을 남긴 뒤 확장/수축하는 폭발을 일으킵니다. 중첩 시 폭발 반경이 증가합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'meteor', createMeteorSpawner);
+      const spawner = ensureSpawner(run, 'herald', createAnnouncerSpawner);
       spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
+      run.danger += 0.31 * stack;
     },
   },
   {
-    id: 'fanQuills',
-    name: 'Fan Quills',
-    description: 'Edge cannons sweep in fan volleys that thicken with stacks.',
+    id: 'bombDrop',
+    name: '폭탄투하',
+    description: '4초마다 상단에서 폭탄이 떨어지고 착지 시 작은 폭발을 일으킵니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'fan', createFanSpawner);
+      const spawner = ensureSpawner(run, 'bombard', createBombardSpawner);
       spawner.level = stack;
-      run.danger += 0.28 + stack * 0.05;
+      run.danger += 0.33 * stack;
     },
   },
   {
-    id: 'blinkNeedles',
-    name: 'Blink Needles',
-    description: 'Teleporting needles mark the floor, then streak outward in greater numbers per stack.',
+    id: 'sniper',
+    name: '저격',
+    description: '6초마다 당신을 가로지르는 긴 레이저를 소환합니다. 중첩 시 주기가 줄어듭니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'blink', createBlinkSpawner);
+      const spawner = ensureSpawner(run, 'sniper', createSniperSpawner);
       spawner.level = stack;
-      run.danger += 0.26 + stack * 0.05;
+      run.danger += 0.36 * stack;
     },
   },
   {
-    id: 'novaGarden',
-    name: 'Nova Garden',
-    description: 'Pods sprout, pulse, and detonate into wide rings. More stacks mean denser pods.',
+    id: 'sinewave',
+    name: '사인파',
+    description: '2초마다 좌측에서 우측으로 삼각 투사체가 사인파 궤도로 날아옵니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'nova', createNovaSpawner);
+      const spawner = ensureSpawner(run, 'sinewave', createSineSpawner);
       spawner.level = stack;
-      run.danger += 0.32 + stack * 0.05;
+      run.danger += 0.27 * stack;
     },
   },
   {
-    id: 'seekerFlare',
-    name: 'Seeker Flares',
-    description: 'Slow orbs ignite, then steer toward your last position. Stacks quicken ignition.',
+    id: 'speedShot',
+    name: '속탄',
+    description: '3초마다 화면 끝에서 매우 빠른 투사체가 직진합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'seeker', createSeekerSpawner);
+      const spawner = ensureSpawner(run, 'speedShot', createSpeedShotSpawner);
       spawner.level = stack;
-      run.danger += 0.3 + stack * 0.04;
+      run.danger += 0.29 * stack;
     },
   },
   {
-    id: 'ringCascade',
-    name: 'Ring Cascade',
-    description: 'Sequential rings ripple outward. Each stack adds an extra wave.',
+    id: 'hammerfall',
+    name: '망치',
+    description: '망치 모양 투사체가 무작위 위치에서 나타나 회전하며 가속합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'cascade', createCascadeSpawner);
+      const spawner = ensureSpawner(run, 'hammer', createHammerSpawner);
       spawner.level = stack;
-      run.danger += 0.34 + stack * 0.05;
+      run.danger += 0.34 * stack;
     },
   },
   {
-    id: 'riftStrafe',
-    name: 'Rift Strafe',
-    description: 'Columns sweep across the arena. Stacks reduce downtime.',
+    id: 'lightningArc',
+    name: '번개',
+    description: '4초마다 번개 경고를 남기고 각 꼭짓점에서 작은 폭발을 일으킵니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'tunnel', createTunnelSpawner);
+      const spawner = ensureSpawner(run, 'lightning', createLightningSpawner);
       spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
+      run.danger += 0.32 * stack;
     },
   },
   {
-    id: 'emberFlurry',
-    name: 'Ember Flurry',
-    description: 'Micro embers rain from above. Stacks make them faster and hotter.',
+    id: 'blastMania',
+    name: '폭발매니아',
+    description: '모든 폭발의 범위가 30% 증가합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'rain', createRainSpawner);
-      spawner.level = stack;
-      run.danger += 0.25 + stack * 0.05;
+      run.explosionScale = Math.pow(1.3, stack);
+      run.danger += 0.28 * stack;
     },
   },
   {
-    id: 'spiralSnare',
-    name: 'Spiral Snare',
-    description: 'Spiral launchers spin faster every stack, doubling their paired bolts.',
+    id: 'paranoia',
+    name: '피해망상',
+    description: '투사체에 가까워질수록 이동속도가 느려집니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'spiral', createSpiralSpawner);
-      spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
+      run.paranoia = stack;
+      run.danger += 0.2 * stack;
     },
   },
   {
-    id: 'ruptureBloom',
-    name: 'Rupture Bloom',
-    description: 'Large glowing seeds mark the floor, then explode into shard halos.',
+    id: 'stalker',
+    name: '미행자',
+    description: '2.5초마다 당신 근처에서 유도 투사체가 발사됩니다. 중첩 시 유도가 강해집니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'rupture', () => createRuptureSpawner('rupture'));
+      const spawner = ensureSpawner(run, 'stalker', createStalkerSpawner);
       spawner.level = stack;
-      run.danger += 0.32 + stack * 0.05;
+      run.danger += 0.3 * stack;
     },
   },
   {
-    id: 'emberPulse',
-    name: 'Ember Pulse',
-    description: 'Clusters of embers pop near you, sending fiery arcs outward.',
-    apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'pulse', () => createPulseSpawner('pulse'));
-      spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
-    },
-  },
-  {
-    id: 'sunSpire',
-    name: 'Sun Spire',
-    description: 'Warning pillars erupt upward and burst into vertical sprays.',
-    apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'spire', () => createSpireSpawner('spire'));
-      spawner.level = stack;
-      run.danger += 0.33 + stack * 0.05;
-    },
-  },
-  {
-    id: 'gloomMines',
-    name: 'Gloom Mines',
-    description: 'Large mines drop in and detonate into crossfire when approached.',
-    apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'mine', () => createMineSpawner('mine'));
-      spawner.level = stack;
-      run.danger += 0.31 + stack * 0.05;
-    },
-  },
-  {
-    id: 'lanternOrbit',
-    name: 'Lantern Orbit',
-    description: 'Orbiting lanterns trail you then detonate. Stacks add lanterns.',
+    id: 'lantern',
+    name: '랜턴불',
+    description: '4초마다 당신 주변을 도는 영혼 투사체가 나타났다 흩뿌립니다.',
     apply: (run, stack) => {
       const spawner = ensureSpawner(run, 'lantern', () => createLanternSpawner('lantern'));
       spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
+      run.danger += 0.25 * stack;
     },
   },
   {
-    id: 'prismVolley',
-    name: 'Prism Volley',
-    description: 'Prismatic volleys carve across diagonals, thickening each stack.',
+    id: 'laserStorm',
+    name: '광선난사',
+    description: '8초마다 여러 개의 레이저를 연속으로 발사합니다. 중첩 시 레이저 수가 증가합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'volley', () => createVolleySpawner('volley'));
+      const spawner = ensureSpawner(run, 'laserStorm', createLaserStormSpawner);
       spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
+      run.danger += 0.38 * stack;
     },
   },
   {
-    id: 'voidComet',
-    name: 'Void Comets',
-    description: 'Slow comets streak in with trails and explode on impact.',
+    id: 'laserFanatic',
+    name: '광선매니아',
+    description: '모든 레이저의 두께가 30% 증가합니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'comet', () => createCometSpawner('comet'));
-      spawner.level = stack;
-      run.danger += 0.3 + stack * 0.05;
+      run.laserWidthScale = Math.pow(1.3, stack);
+      run.danger += 0.22 * stack;
     },
   },
   {
-    id: 'mirrorEcho',
-    name: 'Mirror Echo',
-    description: 'Illusory clones dash forward then burst. Stacks spawn more clones.',
+    id: 'dirge',
+    name: '장송곡',
+    description: '연속 피해를 입으면 중앙에서 회전하는 탄막이 6초 동안 생성됩니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'echo', () => createEchoSpawner('echo'));
-      spawner.level = stack;
-      run.danger += 0.29 + stack * 0.05;
+      run.dirgeLevel = stack;
+      run.danger += 0.34 * stack;
     },
   },
   {
-    id: 'tideBreaker',
-    name: 'Tide Breaker',
-    description: 'Floor geysers surge upward in waves and explode outward.',
+    id: 'meteorStrike',
+    name: '운석',
+    description: '3초마다 짧은 경고 후 무작위 위치에 사각형 운석이 떨어집니다.',
     apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'geyser', () => createGeyserSpawner('geyser'));
+      const spawner = ensureSpawner(run, 'meteor', createMeteorSpawner);
       spawner.level = stack;
-      run.danger += 0.33 + stack * 0.05;
-    },
-  },
-  {
-    id: 'shockFracture',
-    name: 'Shock Fracture',
-    description: 'Lightning fractures mark a line then detonate sequentially.',
-    apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'fracture', () => createFractureSpawner('fracture'));
-      spawner.level = stack;
-      run.danger += 0.34 + stack * 0.05;
-    },
-  },
-  {
-    id: 'emberBloom',
-    name: 'Ember Bloom',
-    description: 'Explosive pollen drifts slowly, then detonates into spirals.',
-    apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'emberBloom', () => createBloomSpawner('emberBloom'));
-      spawner.level = stack;
-      run.danger += 0.31 + stack * 0.05;
-    },
-  },
-  {
-    id: 'chainCataclysm',
-    name: 'Chain Cataclysm',
-    description: 'Linked explosions crawl across the arena once armed.',
-    apply: (run, stack) => {
-      const spawner = ensureSpawner(run, 'chain', () => createChainSpawner('chain'));
-      spawner.level = stack;
-      run.danger += 0.35 + stack * 0.05;
+      run.danger += 0.3 * stack;
     },
   },
 ];
-
-const waveCurseConfigs = [
-  {
-    id: 'zigzagVeil',
-    name: 'Zigzag Veil',
-    description: 'Thin lances zigzag from the arena edges. Stacks add lanes and sharper turns.',
-    danger: { base: 0.27, scale: 0.04 },
-    options: {
-      axis: 'horizontal',
-      path: 'zigzag',
-      lanes: 2,
-      color: '#f5ff7a',
-      shape: 'triangle',
-      zigzag: 95,
-      cooldown: [2.4, 3.2],
-    },
-  },
-  {
-    id: 'sineTangle',
-    name: 'Sine Tangle',
-    description: 'Wavy ribbons slither from top and bottom. Stacks widen their sway.',
-    danger: { base: 0.27, scale: 0.04 },
-    options: {
-      axis: 'vertical',
-      path: 'sine',
-      lanes: 2,
-      amplitude: 60,
-      color: '#9bd3ff',
-      shape: 'diamond',
-      cooldown: [2.6, 3.4],
-    },
-  },
-  {
-    id: 'cosmicRipple',
-    name: 'Cosmic Ripple',
-    description: 'Slow aurora orbs surf in sinusoidal paths from the sides.',
-    danger: { base: 0.26, scale: 0.04 },
-    options: {
-      axis: 'horizontal',
-      path: 'sine',
-      lanes: 1,
-      amplitude: 80,
-      speed: 120,
-      color: '#d9b8ff',
-      shape: 'ring',
-      cooldown: [3, 4],
-    },
-  },
-  {
-    id: 'pincerDrift',
-    name: 'Pincer Drift',
-    description: 'Vertical zigzag drills descend in mirrored pairs. Stacks shrink their gaps.',
-    danger: { base: 0.3, scale: 0.04 },
-    options: {
-      axis: 'vertical',
-      path: 'zigzag',
-      lanes: 3,
-      zigzag: 110,
-      color: '#ffbaba',
-      shape: 'triangle',
-      cooldown: [2.8, 3.6],
-    },
-  },
-  {
-    id: 'spectrumRift',
-    name: 'Spectrum Rift',
-    description: 'Hex prisms surf sideways in layered s-curves.',
-    danger: { base: 0.28, scale: 0.05 },
-    options: {
-      axis: 'horizontal',
-      path: 'sine',
-      lanes: 3,
-      amplitude: 45,
-      color: '#a7ffe7',
-      shape: 'hex',
-      speed: 140,
-      cooldown: [2.2, 3],
-    },
-  },
-  {
-    id: 'zigzagTango',
-    name: 'Zigzag Tango',
-    description: 'Opposing zigzag dancers drop from the sky and floor.',
-    danger: { base: 0.29, scale: 0.05 },
-    options: {
-      axis: 'vertical',
-      path: 'zigzag',
-      lanes: 2,
-      zigzag: 85,
-      color: '#ffd4a3',
-      shape: 'diamond',
-      cooldown: [2.1, 2.8],
-    },
-  },
-];
-
-const retreatCurseConfigs = [
-  {
-    id: 'retreatSaw',
-    name: 'Retreat Saw',
-    description: 'Starbursts rush forward, stall, then reverse. Stacks make their armor runs longer.',
-    danger: { base: 0.28, scale: 0.05 },
-    options: {
-      color: '#ffa17a',
-      shape: 'diamond',
-      pause: 0.3,
-      advance: 0.55,
-      speed: 190,
-    },
-  },
-  {
-    id: 'echoRetreat',
-    name: 'Echo Retreat',
-    description: 'Glowing rings blink in, freeze time briefly, then recoil faster than they arrived.',
-    danger: { base: 0.27, scale: 0.05 },
-    options: {
-      color: '#9de3ff',
-      shape: 'ring',
-      pause: 0.45,
-      advance: 0.65,
-      speed: 170,
-    },
-  },
-];
-
-const lockerCurseConfigs = [
-  {
-    id: 'lockerLockdown',
-    name: 'Locker Lockdown',
-    description: 'Massive lockers drop with warnings before bursting keys in all directions.',
-    danger: { base: 0.29, scale: 0.05 },
-    options: {
-      size: 26,
-      burst: 6,
-      color: '#ffd166',
-      cooldown: [4, 5],
-    },
-  },
-  {
-    id: 'vaultSnap',
-    name: 'Vault Snap',
-    description: 'Chunky vaults crash down, linger, then shatter into shards.',
-    danger: { base: 0.31, scale: 0.05 },
-    options: {
-      size: 30,
-      burst: 8,
-      color: '#ffc371',
-      cooldown: [4.5, 5.8],
-    },
-  },
-];
-
-const latticeCurseConfigs = [
-  {
-    id: 'latticeGlass',
-    name: 'Lattice Glass',
-    description: 'Telegraphed panes descend in grids. Stacks increase the grid density.',
-    danger: { base: 0.27, scale: 0.05 },
-    options: {
-      cells: 3,
-      color: '#94e2ff',
-      speed: 130,
-      shape: 'square',
-    },
-  },
-  {
-    id: 'gridMires',
-    name: 'Grid Mires',
-    description: 'Sticky lattice lockers drop slower but with more tiles each stack.',
-    danger: { base: 0.28, scale: 0.05 },
-    options: {
-      cells: 4,
-      color: '#ff8fc7',
-      speed: 110,
-      shape: 'locker',
-    },
-  },
-];
-
-const stopGoCurseConfigs = [
-  {
-    id: 'stasisMarch',
-    name: 'Stasis March',
-    description: 'Columns surge, freeze, then march again. Stacks reduce the breathing room.',
-    danger: { base: 0.26, scale: 0.05 },
-    options: {
-      axis: 'horizontal',
-      color: '#9df7d2',
-      idle: 0.45,
-      move: 1.15,
-      speed: 160,
-      shape: 'square',
-    },
-  },
-  {
-    id: 'anchorDrift',
-    name: 'Anchor Drift',
-    description: 'Diamond anchors drift diagonally, halt, then burst back into motion.',
-    danger: { base: 0.28, scale: 0.05 },
-    options: {
-      axis: 'diagonal',
-      color: '#ffa5dd',
-      idle: 0.35,
-      move: 1.3,
-      speed: 150,
-      shape: 'diamond',
-    },
-  },
-  {
-    id: 'guardianStop',
-    name: 'Guardian Stop',
-    description: 'Hex sentinels slam vertically, pause, and resume. Stacks stack the squads.',
-    danger: { base: 0.29, scale: 0.05 },
-    options: {
-      axis: 'vertical',
-      color: '#ffd1f0',
-      idle: 0.5,
-      move: 1.4,
-      speed: 165,
-      shape: 'hex',
-    },
-  },
-];
-
-const growthCurseConfigs = [
-  {
-    id: 'bloomingMotes',
-    name: 'Blooming Motes',
-    description: 'Orbs inflate and deflate before detonating. Stacks widen their radius swing.',
-    danger: { base: 0.26, scale: 0.04 },
-    options: {
-      grow: true,
-      color: '#fff06f',
-      shape: 'ring',
-    },
-  },
-  {
-    id: 'dimmingStars',
-    name: 'Dimming Stars',
-    description: 'Tiny stars blink smaller before bursting forward.',
-    danger: { base: 0.25, scale: 0.04 },
-    options: {
-      grow: false,
-      color: '#9ac8ff',
-      shape: 'star',
-    },
-  },
-];
-
-const burstCurseConfigs = [
-  {
-    id: 'emberSatchel',
-    name: 'Ember Satchel',
-    description: 'Bulky satchels telegraph before erupting into slow magma squares.',
-    danger: { base: 0.29, scale: 0.05 },
-    options: {
-      color: '#ffba70',
-      count: 6,
-      shape: 'square',
-      cooldown: [4, 5.2],
-    },
-  },
-  {
-    id: 'petalScatter',
-    name: 'Petal Scatter',
-    description: 'Petal seeds burst into sweeping rings. Stacks add more petals.',
-    danger: { base: 0.28, scale: 0.05 },
-    options: {
-      color: '#ffa3d5',
-      count: 8,
-      shape: 'triangle',
-      cooldown: [3.8, 4.8],
-    },
-  },
-  {
-    id: 'voidKnock',
-    name: 'Void Knock',
-    description: 'Locker seals crack and emit locker-shaped shrapnel.',
-    danger: { base: 0.3, scale: 0.05 },
-    options: {
-      color: '#c7b1ff',
-      count: 5,
-      shape: 'locker',
-      cooldown: [4.2, 5.5],
-    },
-  },
-];
-
-const autoConfigGroups = [
-  { configs: waveCurseConfigs, factory: createWaveSpawner },
-  { configs: retreatCurseConfigs, factory: createRetreatSpawner },
-  { configs: lockerCurseConfigs, factory: createLockerSpawner },
-  { configs: latticeCurseConfigs, factory: createLatticeSpawner },
-  { configs: stopGoCurseConfigs, factory: createStopGoSpawner },
-  { configs: growthCurseConfigs, factory: createGrowthSpawner },
-  { configs: burstCurseConfigs, factory: createBurstSeedSpawner },
-];
-
-autoConfigGroups.forEach(({ configs, factory }) => {
-  configs.forEach((config) => {
-    CHOICES.push({
-      id: config.id,
-      name: config.name,
-      description: config.description,
-      apply: (run, stack) => {
-        const spawner = ensureSpawner(run, config.id, () => factory(config.id, config.options));
-        spawner.level = stack;
-        run.danger += config.danger.base + stack * config.danger.scale;
-      },
-    });
-  });
-});
-
-const reducedCount = Math.ceil(CHOICES.length / 2);
-if (CHOICES.length > reducedCount) {
-  CHOICES.splice(reducedCount);
-}
-
 const CHOICE_LOOKUP = Object.fromEntries(CHOICES.map((choice) => [choice.id, choice]));
 
 function createPlayer() {
@@ -720,6 +332,9 @@ function createPlayer() {
     lastDir: { x: 1, y: 0 },
     choiceHistory: [],
     hurtTimer: 0,
+    empTimer: 0,
+    empSlow: 0.5,
+    lastHitTime: -Infinity,
   };
 }
 
@@ -736,6 +351,7 @@ function createRun(options = {}) {
     spawnAcceleration: BASE_SPAWN_ACCEL,
     nextChoice: CHOICE_INTERVAL,
     choiceInterval: CHOICE_INTERVAL,
+    baseChoiceInterval: CHOICE_INTERVAL,
     awaitingChoice: false,
     extraSpawners: [],
     mirrorBloom: false,
@@ -755,6 +371,12 @@ function createRun(options = {}) {
     pickups: [],
     choiceStacks: {},
     mirrorBloomLevel: 0,
+    bulletScale: 1,
+    damageTakenMultiplier: 1,
+    explosionScale: 1,
+    paranoia: 0,
+    laserWidthScale: 1,
+    dirgeLevel: 0,
   };
 }
 
@@ -1341,6 +963,379 @@ function createVolleySpawner(id) {
         }
         audio.play('bullet');
         spawner.timer = rand(2.5, 3.5) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createBeamlineSpawner() {
+  const spawner = {
+    id: 'beamline',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const beams = Math.max(1, Math.floor(spawner.level));
+        for (let i = 0; i < beams; i++) {
+          spawnLaser(run, 1 + Math.floor(spawner.level / 2));
+        }
+        spawner.timer = 3.5 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createRoadblockSpawner() {
+  const spawner = {
+    id: 'roadblock',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const size = 80 + spawner.level * 12;
+        run.hazards.push({
+          type: 'roadblock',
+          x: rand(size / 2, WIDTH - size / 2),
+          y: rand(size / 2, HEIGHT - size / 2),
+          size: size * (1 + (spawner.level - 1) * 0.4),
+          blink: 1,
+          timer: 1,
+          life: 5,
+          active: false,
+          damage: 14 + spawner.level * 2,
+        });
+        spawner.timer = 5 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createPelletBurstSpawner() {
+  const spawner = {
+    id: 'pelletBurst',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = 6 + Math.max(0, spawner.level - 1) * 4;
+        run.hazards.push({
+          type: 'pelletBurst',
+          x: rand(60, WIDTH - 60),
+          y: rand(60, HEIGHT - 60),
+          timer: 0.5,
+          count,
+          speed: 160 + spawner.level * 12,
+          damage: 7 + spawner.level,
+        });
+        spawner.timer = 4 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createEmpSpawner() {
+  const spawner = {
+    id: 'emp',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        run.player.empTimer = Math.max(run.player.empTimer, 2);
+        run.player.empSlow = 0.5;
+        run.hazards.push({ type: 'emp', timer: 2 });
+        spawner.timer = 7 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createAnnouncerSpawner() {
+  const spawner = {
+    id: 'herald',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const radius = 40 + spawner.level * 12;
+        run.hazards.push({
+          type: 'announcer',
+          state: 'warn',
+          x: rand(70, WIDTH - 70),
+          y: rand(70, HEIGHT - 70),
+          radius: radius * (1 + (spawner.level - 1) * 0.4),
+          duration: 1.8,
+          timer: 0.7,
+          damage: 10 + spawner.level * 2,
+        });
+        spawner.timer = 3 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createBombardSpawner() {
+  const spawner = {
+    id: 'bombard',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const drops = 1 + Math.floor(spawner.level / 2);
+        for (let i = 0; i < drops; i++) {
+          const spawnX = rand(40, WIDTH - 40);
+          run.bullets.push({
+            x: spawnX,
+            y: -30,
+            spawnX,
+            spawnY: -30,
+            warning: 0.4,
+            vx: rand(-15, 15),
+            vy: rand(110, 150),
+            radius: 8,
+            type: 'circle',
+            color: '#ffca7a',
+            damage: 14 + spawner.level * 2,
+            gravity: 90,
+            explodeCount: 6,
+            explodeSpeed: 160,
+            explodeDamage: 6 + spawner.level,
+          });
+        }
+        spawner.timer = 4 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSniperSpawner() {
+  const spawner = {
+    id: 'sniper',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.25;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const angle = rand(0, Math.PI * 2);
+        const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+        const length = Math.max(WIDTH, HEIGHT);
+        const origin = {
+          x: run.player.x - dir.x * length,
+          y: run.player.y - dir.y * length,
+        };
+        run.hazards.push({
+          type: 'sniperLaser',
+          telegraph: 1.4,
+          duration: 0.9,
+          width: (6 + spawner.level) * (run.laserWidthScale || 1),
+          damage: 25 + spawner.level * 4,
+          origin,
+          direction: dir,
+        });
+        spawner.timer = 6 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSineSpawner() {
+  const spawner = {
+    id: 'sinewave',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const spawnY = rand(40, HEIGHT - 40);
+        run.bullets.push({
+          x: -20,
+          y: spawnY,
+          vx: 160 + spawner.level * 20,
+          vy: 0,
+          radius: 6,
+          size: 20,
+          type: 'square',
+          shape: 'triangle',
+          color: '#8ce4ff',
+          damage: 9 + spawner.level,
+          osc: { axis: 'y', amplitude: 60 + spawner.level * 5, speed: 4 + spawner.level * 0.2 },
+        });
+        spawner.timer = 2 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createSpeedShotSpawner() {
+  const spawner = {
+    id: 'speedShot',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const edge = randInt(0, 3);
+        const point = getEdgePoint(edge);
+        const angle = Math.atan2(run.player.y - point.y, run.player.x - point.x);
+        run.bullets.push({
+          x: point.x,
+          y: point.y,
+          vx: Math.cos(angle) * (260 + spawner.level * 20),
+          vy: Math.sin(angle) * (260 + spawner.level * 20),
+          radius: 4,
+          type: 'circle',
+          color: '#ffffff',
+          damage: 10 + spawner.level,
+        });
+        spawner.timer = 3 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createHammerSpawner() {
+  const spawner = {
+    id: 'hammer',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const spawnX = rand(70, WIDTH - 70);
+        const spawnY = rand(70, HEIGHT - 70);
+        const angle = rand(0, Math.PI * 2);
+        const speed = 40 + spawner.level * 10;
+        run.bullets.push({
+          x: spawnX,
+          y: spawnY,
+          spawnX,
+          spawnY,
+          warning: 0.6,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius: 10,
+          size: 26,
+          type: 'square',
+          shape: 'hammer',
+          color: '#f1c06f',
+          damage: 15 + spawner.level * 2,
+          spin: 3 + spawner.level * 0.3,
+          accel: 15 + spawner.level * 6,
+          life: 6 + spawner.level * 0.5,
+        });
+        spawner.timer = rand(2, 10) / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createLightningSpawner() {
+  const spawner = {
+    id: 'lightning',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const points = 3 + Math.max(0, spawner.level - 1) * 2;
+        const vertices = [];
+        let current = { x: rand(40, WIDTH - 40), y: rand(40, HEIGHT - 40) };
+        vertices.push(current);
+        for (let i = 1; i < points; i++) {
+          current = {
+            x: clamp(current.x + rand(-80, 80), 30, WIDTH - 30),
+            y: clamp(current.y + rand(-80, 80), 30, HEIGHT - 30),
+          };
+          vertices.push(current);
+        }
+        run.hazards.push({ type: 'lightning', vertices, timer: 0.8, level: spawner.level });
+        spawner.timer = 4 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createStalkerSpawner() {
+  const spawner = {
+    id: 'stalker',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.2;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const angle = rand(0, Math.PI * 2);
+        const dist = 120;
+        const spawnX = run.player.x + Math.cos(angle) * dist;
+        const spawnY = run.player.y + Math.sin(angle) * dist;
+        run.bullets.push({
+          x: spawnX,
+          y: spawnY,
+          spawnX,
+          spawnY,
+          warning: 0.4,
+          vx: 0,
+          vy: 0,
+          radius: 5,
+          type: 'circle',
+          color: '#ff92bb',
+          damage: 8 + spawner.level,
+          seek: 80 + spawner.level * 25,
+          maxSpeed: 170 + spawner.level * 20,
+        });
+        spawner.timer = 2.5 / haste;
+      }
+    },
+  };
+  return spawner;
+}
+
+function createLaserStormSpawner() {
+  const spawner = {
+    id: 'laserStorm',
+    level: 1,
+    timer: 0,
+    tick(run, dt) {
+      const haste = 1 + (spawner.level - 1) * 0.15;
+      spawner.timer -= dt * haste;
+      if (spawner.timer <= 0) {
+        const count = 5 + Math.max(0, spawner.level - 1) * 4;
+        run.hazards.push({
+          type: 'laserQueue',
+          remaining: count,
+          interval: 0.4,
+          timer: 0,
+          level: 1 + Math.floor(spawner.level / 2),
+        });
+        spawner.timer = 8 / haste;
       }
     },
   };
@@ -1968,16 +1963,19 @@ function getEdgePoint(edge) {
 }
 
 function spawnRing(run, x, y, count, speed, color, damage = 10) {
+  const scale = run.explosionScale || 1;
+  const scaledSpeed = speed * scale;
+  const scaledDamage = damage * scale;
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count;
     run.bullets.push({
       x,
       y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
+      vx: Math.cos(angle) * scaledSpeed,
+      vy: Math.sin(angle) * scaledSpeed,
       radius: 4,
       type: 'circle',
-      damage,
+      damage: scaledDamage,
       color,
     });
   }
@@ -2164,6 +2162,19 @@ function handleInput(run, delta) {
 
   const rushing = (keys.has('ShiftLeft') || keys.has('ShiftRight')) && len > 0;
   let speed = player.speed * player.speedMultiplier;
+  if (player.empTimer > 0) {
+    player.empTimer = Math.max(0, player.empTimer - delta);
+    speed *= player.empSlow;
+  }
+  if (run.paranoia > 0 && run.bullets.length) {
+    const nearest = getNearestBulletDistance(player, run.bullets);
+    const leash = 180;
+    if (nearest < leash) {
+      const pct = (leash - nearest) / leash;
+      const slow = Math.max(0.35, 1 - pct * 0.5 * run.paranoia);
+      speed *= slow;
+    }
+  }
   let spending = false;
   if (rushing && player.stamina > 0) {
     speed *= player.rushMultiplier;
@@ -2373,7 +2384,7 @@ function explodeBullet(run, bullet) {
 function spawnLaser(run, level = 1) {
   const horizontal = Math.random() < 0.5;
   const offset = horizontal ? rand(40, HEIGHT - 40) : rand(40, WIDTH - 40);
-  const width = 10 + level * 2;
+  const width = (10 + level * 2) * (run.laserWidthScale || 1);
   run.hazards.push({
     type: 'laser',
     horizontal,
@@ -2472,6 +2483,42 @@ function updateEffects(run, delta) {
   });
 }
 
+function getBulletScale(run, bullet) {
+  return (bullet.scale || 1) * (run.bulletScale || 1);
+}
+
+function getBulletRadius(run, bullet) {
+  return (bullet.radius || 0) * getBulletScale(run, bullet);
+}
+
+function getBulletSize(run, bullet) {
+  if (typeof bullet.size === 'number') {
+    return bullet.size * getBulletScale(run, bullet);
+  }
+  return getBulletRadius(run, bullet) * 2;
+}
+
+function getNearestBulletDistance(player, bullets) {
+  if (!bullets.length) return Infinity;
+  let closest = Infinity;
+  for (let i = 0; i < bullets.length; i++) {
+    const bullet = bullets[i];
+    if (bullet.warning > 0) continue;
+    const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
+    if (dist < closest) closest = dist;
+  }
+  return closest;
+}
+
+function pointLineDistance(px, py, origin, direction) {
+  const vx = px - origin.x;
+  const vy = py - origin.y;
+  const proj = vx * direction.x + vy * direction.y;
+  const closestX = origin.x + direction.x * proj;
+  const closestY = origin.y + direction.y * proj;
+  return Math.hypot(px - closestX, py - closestY);
+}
+
 function updateBullets(run, delta) {
   const player = run.player;
   for (let i = run.bullets.length - 1; i >= 0; i--) {
@@ -2533,16 +2580,18 @@ function updateBullets(run, delta) {
     }
     if (player.invuln > 0) continue;
     if (bullet.type === 'circle') {
+      const effectiveRadius = getBulletRadius(run, bullet);
       const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
-      if (dist < bullet.radius + player.radius) {
+      if (dist < effectiveRadius + player.radius) {
         applyDamage(run, player, bullet.damage);
         explodeBullet(run, bullet);
         run.bullets.splice(i, 1);
       }
     } else if (bullet.type === 'square') {
+      const effectiveSize = getBulletSize(run, bullet);
       if (
-        Math.abs(bullet.x - player.x) < bullet.size / 2 + player.radius &&
-        Math.abs(bullet.y - player.y) < bullet.size / 2 + player.radius
+        Math.abs(bullet.x - player.x) < effectiveSize / 2 + player.radius &&
+        Math.abs(bullet.y - player.y) < effectiveSize / 2 + player.radius
       ) {
         applyDamage(run, player, bullet.damage);
         explodeBullet(run, bullet);
@@ -2619,6 +2668,19 @@ function applyBulletBehavior(bullet, delta) {
     } else {
       bullet.size = size * 2;
     }
+  }
+  if (bullet.gravity) {
+    bullet.vy += bullet.gravity * delta;
+  }
+  if (bullet.spin) {
+    bullet.angle = (bullet.angle || 0) + bullet.spin * delta;
+  }
+  if (bullet.accel) {
+    const dirSpeed = Math.hypot(bullet.vx, bullet.vy) || 1;
+    const normX = bullet.vx / dirSpeed;
+    const normY = bullet.vy / dirSpeed;
+    bullet.vx += normX * bullet.accel * delta;
+    bullet.vy += normY * bullet.accel * delta;
   }
 }
 
@@ -2869,12 +2931,141 @@ function updateHazards(run, delta) {
         spawnRing(run, hazard.x, hazard.y, count, 120 + hazard.level * 10, '#ffffff', 7 + hazard.level);
         run.hazards.splice(i, 1);
       }
+    } else if (hazard.type === 'roadblock') {
+      hazard.life -= delta;
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        hazard.active = !hazard.active;
+        hazard.timer = hazard.blink;
+      }
+      if (hazard.active && player.invuln <= 0) {
+        if (
+          Math.abs(player.x - hazard.x) < hazard.size / 2 &&
+          Math.abs(player.y - hazard.y) < hazard.size / 2
+        ) {
+          applyDamage(run, player, hazard.damage);
+        }
+      }
+      if (hazard.life <= 0) {
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'pelletBurst') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        const count = hazard.count;
+        for (let j = 0; j < count; j++) {
+          const angle = (Math.PI * 2 * j) / count;
+          run.bullets.push({
+            x: hazard.x,
+            y: hazard.y,
+            vx: Math.cos(angle) * hazard.speed,
+            vy: Math.sin(angle) * hazard.speed,
+            radius: 4,
+            type: 'circle',
+            color: '#ffd86f',
+            damage: hazard.damage,
+          });
+        }
+        audio.play('bullet');
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'emp') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'announcer') {
+      hazard.timer -= delta;
+      if (hazard.state === 'warn' && hazard.timer <= 0) {
+        hazard.state = 'boom';
+        hazard.timer = hazard.duration;
+        hazard.elapsed = 0;
+      } else if (hazard.state === 'boom') {
+        hazard.elapsed += delta;
+        const pct = Math.max(0, 1 - hazard.timer / hazard.duration);
+        const expanding = pct < 0.5 ? pct * 2 : (1 - pct) * 2;
+        hazard.currentRadius = hazard.radius * expanding;
+        if (hazard.timer <= 0) {
+          run.hazards.splice(i, 1);
+          continue;
+        }
+        if (player.invuln <= 0) {
+          if (Math.hypot(player.x - hazard.x, player.y - hazard.y) < hazard.currentRadius) {
+            applyDamage(run, player, hazard.damage);
+          }
+        }
+      }
+    } else if (hazard.type === 'sniperLaser') {
+      if (hazard.telegraph > 0) {
+        hazard.telegraph -= delta;
+      } else {
+        hazard.duration -= delta;
+        if (hazard.duration <= 0) {
+          run.hazards.splice(i, 1);
+          continue;
+        }
+        if (player.invuln <= 0) {
+          const dist = pointLineDistance(player.x, player.y, hazard.origin, hazard.direction);
+          if (dist < hazard.width) {
+            applyDamage(run, player, hazard.damage);
+          }
+        }
+      }
+    } else if (hazard.type === 'lightning') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        hazard.vertices.forEach((vertex) => {
+          spawnRing(run, vertex.x, vertex.y, 6, 150, '#ffe077', 9 + hazard.level);
+        });
+        run.hazards.splice(i, 1);
+      }
+    } else if (hazard.type === 'laserQueue') {
+      hazard.timer -= delta;
+      if (hazard.timer <= 0) {
+        spawnLaser(run, hazard.level);
+        hazard.remaining -= 1;
+        hazard.timer = hazard.interval;
+        if (hazard.remaining <= 0) {
+          run.hazards.splice(i, 1);
+        }
+      }
+    } else if (hazard.type === 'dirge') {
+      hazard.timer -= delta;
+      hazard.angle += delta * (0.8 + hazard.level * 0.15);
+      hazard.emit -= delta;
+      if (hazard.emit <= 0) {
+        hazard.emit = 0.35;
+        const shots = 10 + hazard.level * 2;
+        for (let j = 0; j < shots; j++) {
+          const theta = hazard.angle + (Math.PI * 2 * j) / shots;
+          run.bullets.push({
+            x: WIDTH / 2,
+            y: HEIGHT / 2,
+            vx: Math.cos(theta) * (140 + hazard.level * 15),
+            vy: Math.sin(theta) * (140 + hazard.level * 15),
+            radius: 4,
+            type: 'circle',
+            color: '#ff9ed1',
+            damage: 8 + hazard.level,
+            ignoreGravity: true,
+          });
+        }
+        audio.play('bullet');
+      }
+      if (hazard.timer <= 0) {
+        run.hazards.splice(i, 1);
+      }
     }
   }
 }
 
 function applyDamage(run, player, dmg) {
-  player.hp = Math.max(0, player.hp - dmg);
+  const scaled = Math.ceil(dmg * (run.damageTakenMultiplier || 1));
+  player.hp = Math.max(0, player.hp - scaled);
+  if (run.dirgeLevel > 0 && run.time - player.lastHitTime <= 3) {
+    triggerDirge(run);
+  }
+  player.lastHitTime = run.time;
   if (run === state.run) {
     player.hurtTimer = 0.4;
     player.invuln = Math.max(player.invuln, 0.2);
@@ -2888,6 +3079,21 @@ function applyDamage(run, player, dmg) {
     });
     audio.play('hurt');
   }
+}
+
+function triggerDirge(run) {
+  const existing = run.hazards.find((h) => h.type === 'dirge');
+  if (existing) {
+    existing.timer = Math.max(existing.timer, 6);
+    return;
+  }
+  run.hazards.push({
+    type: 'dirge',
+    timer: 6,
+    angle: 0,
+    emit: 0,
+    level: run.dirgeLevel || 1,
+  });
 }
 
 function updateAIRun(run, delta) {
@@ -3077,7 +3283,7 @@ function drawRun(run) {
       ctx.lineWidth = lw;
       return;
     }
-    drawBulletShape(bullet);
+    drawBulletShape(run, bullet);
   });
 
   run.hazards.forEach((hazard) => {
@@ -3196,6 +3402,69 @@ function drawRun(run) {
     } else if (hazard.type === 'echo') {
       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
       ctx.strokeRect(hazard.x - 8, hazard.y - 8, 16, 16);
+    } else if (hazard.type === 'roadblock') {
+      ctx.fillStyle = hazard.active ? 'rgba(255,120,120,0.45)' : 'rgba(255,255,255,0.18)';
+      ctx.fillRect(hazard.x - hazard.size / 2, hazard.y - hazard.size / 2, hazard.size, hazard.size);
+    } else if (hazard.type === 'pelletBurst') {
+      ctx.strokeStyle = 'rgba(255,216,111,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, 20, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (hazard.type === 'emp') {
+      ctx.fillStyle = 'rgba(120,170,255,0.15)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    } else if (hazard.type === 'announcer') {
+      if (hazard.state === 'warn') {
+        ctx.strokeStyle = 'rgba(255,230,140,0.45)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(hazard.x, hazard.y, hazard.radius * 0.4, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = 'rgba(255,150,120,0.35)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(hazard.x, hazard.y, hazard.currentRadius || hazard.radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else if (hazard.type === 'sniperLaser') {
+      ctx.strokeStyle = hazard.telegraph > 0 ? 'rgba(255,255,255,0.2)' : '#ff7c7c';
+      ctx.lineWidth = hazard.width * 2;
+      ctx.beginPath();
+      const length = Math.max(WIDTH, HEIGHT) * 1.5;
+      ctx.moveTo(
+        hazard.origin.x - hazard.direction.x * length,
+        hazard.origin.y - hazard.direction.y * length,
+      );
+      ctx.lineTo(
+        hazard.origin.x + hazard.direction.x * length,
+        hazard.origin.y + hazard.direction.y * length,
+      );
+      ctx.stroke();
+    } else if (hazard.type === 'lightning') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      hazard.vertices.forEach((point, idx) => {
+        if (idx === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+    } else if (hazard.type === 'laserQueue') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(WIDTH - 30, 40);
+      ctx.lineTo(WIDTH - 10, 40);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (hazard.type === 'dirge') {
+      ctx.strokeStyle = 'rgba(255,158,209,0.25)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(WIDTH / 2, HEIGHT / 2, 26 + hazard.level * 6, 0, Math.PI * 2);
+      ctx.stroke();
     }
   });
 
@@ -3225,10 +3494,11 @@ function drawRun(run) {
   }
 }
 
-function drawBulletShape(bullet) {
+function drawBulletShape(run, bullet) {
   const shape = bullet.shape || (bullet.type === 'circle' ? 'circle' : 'square');
   const color = bullet.color || '#ffffff';
-  const size = bullet.size || bullet.radius * 2;
+  const size = getBulletSize(run, bullet);
+  const radius = getBulletRadius(run, bullet);
   ctx.fillStyle = color;
   switch (shape) {
     case 'ring': {
@@ -3236,7 +3506,7 @@ function drawBulletShape(bullet) {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+      ctx.arc(bullet.x, bullet.y, radius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.lineWidth = lw;
       break;
@@ -3298,6 +3568,17 @@ function drawBulletShape(bullet) {
       ctx.restore();
       break;
     }
+    case 'hammer': {
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(bullet.angle || 0);
+      const head = size * 0.55;
+      const handle = size * 0.2;
+      ctx.fillRect(-head / 2, -head / 2, head, head);
+      ctx.fillRect(-handle / 2, head / 2 - handle / 2, handle, size);
+      ctx.restore();
+      break;
+    }
     case 'square': {
       ctx.fillRect(bullet.x - size / 2, bullet.y - size / 2, size, size);
       break;
@@ -3305,7 +3586,7 @@ function drawBulletShape(bullet) {
     case 'circle':
     default: {
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+      ctx.arc(bullet.x, bullet.y, radius, 0, Math.PI * 2);
       ctx.fill();
       break;
     }
