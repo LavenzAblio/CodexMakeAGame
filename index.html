@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Matrivade · Bullet Evasion Arena</title>
+  <title>Matrivade · 탄막 회피 게임</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,21 +11,21 @@
     <header class="title">
       <div>
         <h1>Matrivade</h1>
-        <p class="tagline">WASD to move · Shift to rush · Space to shield dash · Outlast every barrage of light.</p>
+        <p class="tagline">WASD로 이동 · Shift로 질주 · Space로 점멸 · 누구보다도 오래 생존하세요.</p>
       </div>
       <div class="account-panel">
         <div class="account-form">
-          <label>Nickname
-            <input id="nickname" type="text" placeholder="enter nickname" />
+          <label>닉네임
+            <input id="nickname" type="text" placeholder="닉네임을 입력하세요." />
           </label>
-          <label>Password
-            <input id="password" type="password" placeholder="enter password" />
+          <label>비밀번호
+            <input id="password" type="password" placeholder="비밀번호를 입력하세요." />
           </label>
           <div class="account-buttons">
-            <button id="loginBtn">Sign In</button>
-            <button id="logoutBtn" class="ghost">Sign Out</button>
+            <button id="loginBtn">로그인</button>
+            <button id="logoutBtn" class="ghost">로그아웃</button>
           </div>
-          <small class="info">Accounts live only in this browser and keep track of choices, level, and win rate.</small>
+          <small class="info">로그인을 하면 계정 정보를 확인할 수 있고, 특별한 기능이 해금됩니다.</small>
         </div>
         <div class="account-stats" id="accountStats"></div>
       </div>
@@ -33,42 +33,42 @@
 
     <main>
       <section class="menu">
-        <button class="mode" id="soloBtn">Solo Roguelike</button>
-        <button class="mode" id="pvpBtn">1v1 Duel</button>
-        <button class="mode ghost" id="codexBtn">Codex</button>
+        <button class="mode" id="soloBtn">솔로 게임</button>
+        <button class="mode" id="pvpBtn">1대1 온라인 대전</button>
+        <button class="mode ghost" id="codexBtn">저주 도감</button>
       </section>
       <section class="game-wrapper">
         <canvas id="gameCanvas" width="900" height="600"></canvas>
         <div class="hud" id="hud"></div>
         <div class="queue-overlay hidden" id="queueOverlay">
-          <p id="queueMessage">Waiting for another challenger...</p>
+          <p id="queueMessage">상대를 기다리고 있습니다...</p>
           <div class="dot-loader"></div>
         </div>
         <div class="choice-overlay hidden" id="choiceOverlay">
           <div class="choice-header">
-            <h2 id="choiceTitle">Select an affliction for your run</h2>
-            <p id="choiceSubtitle">Time pauses while you choose. A random curse will hit when the timer expires.</p>
+            <h2 id="choiceTitle">저주를 선택하세요.</h2>
+            <p id="choiceSubtitle">저주를 선택하는 동안 게임 시간은 멈춥니다. 시간 안에 선택하지 않으면 저주가 무작위로 적용됩니다.</p>
             <div class="choice-timer" id="choiceTimer"></div>
           </div>
           <div class="choice-options" id="choiceOptions"></div>
         </div>
         <div class="gameover-overlay hidden" id="gameOver">
-          <h2 id="gameOverTitle">Round Over</h2>
+          <h2 id="gameOverTitle">게임 오버</h2>
           <p id="gameOverDetail"></p>
           <div class="unlock-readout">
-            <h3>Unlocks this run</h3>
+            <h3>이번 게임에서 해금한 저주</h3>
             <div id="unlockList"></div>
           </div>
           <div class="gameover-buttons">
-            <button id="rematchBtn">Rematch</button>
-            <button id="mainMenuBtn" class="ghost">Main Menu</button>
+            <button id="rematchBtn">재개</button>
+            <button id="mainMenuBtn" class="ghost">메인 메뉴</button>
           </div>
         </div>
       </section>
       <section class="leaderboard-panel">
         <div>
-          <h2>Solo Leaderboard</h2>
-          <p class="leaderboard-sub">Longest roguelike survivals on this device.</p>
+          <h2>최고기록</h2>
+          <p class="leaderboard-sub">이 기기에서의 기록을 저장합니다.</p>
         </div>
         <ol id="soloLeaderboard" class="leaderboard-list"></ol>
       </section>
