@@ -143,10 +143,10 @@ canvas {
 }
 
 .hud {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
   font-family: 'JetBrains Mono', monospace;
   display: flex;
   flex-direction: column;
@@ -158,6 +158,8 @@ canvas {
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
   pointer-events: none;
+  margin: 0 auto 12px;
+  width: max-content;
 }
 
 .meter {
@@ -395,6 +397,18 @@ canvas {
   flex-direction: column;
   gap: 1rem;
   overflow: auto;
+}
+
+.codex-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  background: linear-gradient(180deg, rgba(2, 3, 8, 0.98) 80%, rgba(2, 3, 8, 0));
+  z-index: 1;
 }
 
 .codex-grid {

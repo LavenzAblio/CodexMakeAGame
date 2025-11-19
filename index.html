@@ -38,9 +38,9 @@
         <button class="mode" id="pvpBtn">1대1 대전</button>
         <button class="mode ghost" id="codexBtn">저주 도감</button>
       </section>
+      <div class="hud" id="hud"></div>
       <section class="game-wrapper">
         <canvas id="gameCanvas" width="900" height="600"></canvas>
-        <div class="hud" id="hud"></div>
         <div class="queue-overlay hidden" id="queueOverlay">
           <p id="queueMessage">다른 도전자와 연결 중...</p>
           <div class="dot-loader"></div>
@@ -77,9 +77,11 @@
   </div>
   <template id="codexTemplate">
     <div class="codex">
-      <h2>해금된 저주</h2>
+      <div class="codex-header">
+        <h2>해금된 저주</h2>
+        <button class="ghost" id="closeCodex">닫기</button>
+      </div>
       <div class="codex-grid" id="codexGrid"></div>
-      <button class="ghost" id="closeCodex">닫기</button>
     </div>
   </template>
   <script src="main.js" type="module"></script>

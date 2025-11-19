@@ -447,12 +447,12 @@ const CHOICES = [
   {
     id: 'taxCut',
     name: '탈세',
-    description: '회복 아이템이 50% 빨리 나오지만 2초마다 체력이 1씩 감소합니다.',
+    description: '회복 아이템이 20% 빨리 나오지만 2초마다 체력이 1씩 감소합니다.',
     apply: (run, stack) => {
       const prev = run.taxLevel || 0;
-      if (prev) run.healInterval /= Math.pow(0.5, prev);
+      if (prev) run.healInterval /= Math.pow(0.8, prev);
       run.taxLevel = stack;
-      run.healInterval *= Math.pow(0.5, run.taxLevel);
+      run.healInterval *= Math.pow(0.8, run.taxLevel);
       run.hpDrainRate = 0.5 * stack;
       run.danger += 0.26 * stack;
     },
@@ -1806,7 +1806,8 @@ function createGravityNetSpawner() {
           x: run.player.x,
           y: run.player.y,
           timer: 3 + spawner.level,
-          strength: 40 + spawner.level * 10,
+          radius: 75,
+          strength: 90 + spawner.level * 20,
         });
       }
     },
@@ -3354,6 +3355,7 @@ function updateHazards(run, delta) {
         const dx = hazard.x - bullet.x;
         const dy = hazard.y - bullet.y;
         const dist = Math.hypot(dx, dy) || 1;
+        if (dist > (hazard.radius || 75)) return;
         const pull = (hazard.strength / dist) * delta;
         bullet.vx += (dx / dist) * pull;
         bullet.vy += (dy / dist) * pull;
@@ -3708,7 +3710,7 @@ function drawRun(run) {
       ctx.strokeStyle = 'rgba(180,255,255,0.3)';
       ctx.setLineDash([6, 6]);
       ctx.beginPath();
-      ctx.arc(hazard.x, hazard.y, 50, 0, Math.PI * 2);
+      ctx.arc(hazard.x, hazard.y, hazard.radius || 75, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
